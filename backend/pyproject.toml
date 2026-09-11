@@ -64,6 +64,12 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
+[tool.ruff.lint.per-file-ignores]
+# Alembic generates these. Its index and constraint calls run long, and rewrapping machine
+# written migrations by hand adds diff noise without adding clarity. ruff format still runs on
+# them via the post_write_hooks in alembic.ini.
+"alembic/versions/*.py" = ["E501"]
+
 [tool.mypy]
 python_version = "3.13"
 files = ["src/expense_api"]

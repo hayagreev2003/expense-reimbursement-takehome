@@ -1,0 +1,176 @@
+# Nortex Industries Ltd - Travel & Expense Policy parameters
+#
+# Transcribed from pack/expense_policy.md. This file is the authored source; the seed loads it
+# into a policy_version row, and evaluation reads the row. A claim records which version it was
+# evaluated against, so a claim settled under Rev 4 still reproduces its own numbers after a
+# Rev 5 lands.
+#
+# Every value here is traceable to a clause. Anything NOT in the policy document is marked
+# `source: assumption` and must stay marked - see tier_2_cities.
+
+document_id: NTX-HR-POL-11
+revision: Rev 4
+effective_from: 2026-04-01
+effective_to: null
+
+currency: INR
+
+# -- §1 Travel request and advance -------------------------------------------------
+advance:
+  # "up to 60% of the estimated employee-borne cost" (§1.2). Note: employee-borne, not total.
+  max_fraction_of_employee_borne_estimate: 0.60
+  # "recoverable from the employee and is deducted from the next payroll cycle" (§1.3)
+  shortfall_recoverable_from_payroll: true
+
+# -- §2 Approval matrix ------------------------------------------------------------
+# Keyed on claimed value AFTER disallowances. min/max are inclusive; max null is open-ended.
+approval_matrix:
+  - min: 0
+    max: 25000
+    roles: [Reporting Manager]
+  - min: 25001
+    max: 75000
+    roles: [Reporting Manager, Head of Department]
+  - min: 75001
+    max: 200000
+    roles: [Reporting Manager, Head of Department, Head of Division]
+  - min: 200001
+    max: null
+    roles: [Reporting Manager, Head of Department, Head of Division, MD]
+
+approvals:
+  # "Finance verification is required on every claim regardless of value" (§2.1)
+  finance_verification_always: true
+  # "An approver cannot approve their own claim... that level is skipped and the next level up
+  # acts" (§2.2)
+  skip_self_approval: true
+  # Any international travel requires the full chain plus MD (§2 table footnote)
+  international_requires_md: true
+  # "Approvers may return a claim with remarks... goes back to the employee for correction and
+  # resubmission against the same Travel Request ID" (§2.3)
+  allow_return_with_remarks: true
+
+# -- §3.1 Lodging ------------------------------------------------------------------
+lodging:
+  # Per night, room tariff EXCLUDING taxes.
+  limits_per_night:
+    Tier 1: 6000
+    Tier 2: 4000
+    Tier 3: 2800
+  # "Taxes on room tariff are reimbursable in full."
+  taxes_on_tariff_reimbursable_in_full: true
+  # "Tariff in excess of the limit is not reimbursable and must be shown as a disallowed
+  # amount, not omitted."
+  excess_shown_as_disallowed: true
+
+city_classes:
+  # Enumerated in §3.1. Authoritative.
+  tier_1_cities:
+    source: policy
+    cities:
+      - Bengaluru
+      - Mumbai
+      - Delhi NCR
+      - Hyderabad
+      - Chennai
+      - Pune
+      - Kolkata
+
+  # NOT in the policy document, which names only Tier 1. This list is an operating assumption
+  # so the system can classify a destination at all; it is deliberately short and conservative.
+  # Finance can override a classification per trip, and the override is recorded in the audit
+  # trail. Do not promote a city here because it "seems large" - get it confirmed.
+  tier_2_cities:
+    source: assumption
+    cities:
+      - Ahmedabad
+      - Jaipur
+      - Lucknow
+      - Chandigarh
+      - Kochi
+      - Coimbatore
+      - Indore
+      - Nagpur
+      - Bhubaneswar
+      - Visakhapatnam
+
+  # Anything unrecognised falls here: the lowest limit, which is the conservative direction for
+  # the company, and it is flagged for confirmation rather than applied silently.
+  default_class: Tier 3
+  flag_unclassified_for_confirmation: true
+
+# -- §3.2 Air travel ---------------------------------------------------------------
+air_travel:
+  # "Economy class only for domestic sectors."
+  domestic_class: economy
+  # "Bookings are made centrally through the empanelled travel desk and are billed to the
+  # company. Employees do not claim these." Recorded as memo for audit, never reimbursed.
+  employee_may_claim: false
+  record_as_memo: true
+
+# -- §3.3 Meals --------------------------------------------------------------------
+meals:
+  # Per full day.
+  daily_limits:
+    Tier 1: 1500
+    Tier 2: 1000
+    Tier 3: 1000
+  # "Travel days count as full days."
+  travel_days_count_as_full: true
+  # "Meal claims are on actuals up to the limit" - not a flat allowance.
+  on_actuals: true
+  # "need bills above INR 500"
+  bill_required_above: 500
+
+# -- §3.4 Local conveyance ---------------------------------------------------------
+local_conveyance:
+  on_actuals: true
+  receipt_required: true
+  # "Airport transfers at either end of the trip are covered."
+  airport_transfers_covered: true
+
+# -- §3.5 Business entertainment ---------------------------------------------------
+business_entertainment:
+  # "are not meal allowance. They are claimed under Business Entertainment"
+  separate_head: true
+  # "require the names and organisation of attendees"
+  attendees_required: true
+  # "need prior approval from the Head of Department if above INR 2,000"
+  prior_approval_threshold: 2000
+  prior_approval_role: Head of Department
+
+# -- §4 Non-reimbursable -----------------------------------------------------------
+# "never reimbursed and must be excluded from the claim even when they appear on a hotel folio
+# or a consolidated bill". Note what is NOT here: food. In-room dining is a meal, not an
+# excluded folio extra - see docs/agents/policy-engine.md.
+non_reimbursable:
+  categories:
+    - laundry
+    - mini bar
+    - in-room entertainment
+    - spa
+    - gym
+    - personal phone
+    - personal data
+    - fines
+    - penalties
+    - traffic challan
+    - travel insurance purchased independently
+  # "Alcohol, except where part of an approved business entertainment claim"
+  alcohol_unless_approved_entertainment: true
+  # "Expenses incurred by any person other than the claimant"
+  other_persons_expenses: true
+  # Tax apportioned to a disallowed line is disallowed with it.
+  disallow_apportioned_tax: true
+
+# -- §5 Submission -----------------------------------------------------------------
+submission:
+  # "within 7 calendar days of return" (§5.1)
+  deadline_days_after_return: 7
+  # "Every claim line requires a supporting document. A claim line without a proof reference is
+  # returned." (§5.2)
+  proof_required_per_line: true
+  # "Finance reconciles by bill number, date, amount and merchant." (§5.3)
+  duplicate_match_fields: [bill_no, txn_date, gross_amount, merchant]
+  # "Finance processes verified claims in the payment run on the 10th and 25th" (§5.4)
+  payment_run_days: [10, 25]

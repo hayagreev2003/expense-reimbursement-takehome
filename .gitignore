@@ -27,3 +27,6 @@ next-env.d.ts
 
 # Local artefacts
 /exports/
+
+# Local SQLite database and its WAL sidecars. Rebuilt with `make reset-db`.
+backend/data/

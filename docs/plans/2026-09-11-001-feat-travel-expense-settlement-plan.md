@@ -311,7 +311,7 @@ Submission is blocked while any line is `held` or lacks a proof reference. `Draf
 
 ---
 
-- [ ] **Unit 2: Domain model, migrations, and seed**
+- [x] **Unit 2: Domain model, migrations, and seed**
 
 **Goal:** The full schema exists, the employee master and policy version are seeded, and the Travel Request ID is established as the join key every later unit hangs work from.
 
