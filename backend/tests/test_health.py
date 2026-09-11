@@ -1,0 +1,79 @@
+"""Unit 1 verification: the app builds through create_app(), gates are safe, CORS is correct."""
+
+import pytest
+from httpx import AsyncClient
+
+
+@pytest.mark.asyncio
+async def test_health_returns_ok(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "environment": "test"}
+
+
+def test_docs_gate_allowlists_rather_than_denylists() -> None:
+    """An unrecognised environment must default to docs off, not docs on."""
+    from expense_api.config.settings import Settings
+
+    assert Settings(_env_file=None, app_env="development").docs_enabled
+    assert Settings(_env_file=None, app_env="test").docs_enabled
+    assert not Settings(_env_file=None, app_env="production").docs_enabled
+
+
+def test_database_urls_are_sqlite_and_share_one_path() -> None:
+    """The async and Alembic URLs must point at the same file, or migrations land elsewhere."""
+    from expense_api.config.settings import Settings
+
+    settings = Settings(_env_file=None, database_path="/tmp/example.db")
+
+    assert settings.database_url == "sqlite+aiosqlite:////tmp/example.db"
+    assert settings.sync_database_url == "sqlite:////tmp/example.db"
+
+
+def test_invalid_app_env_fails_at_construction() -> None:
+    """APP_ENV is a Literal so a typo is a boot-time error, not a silently closed gate."""
+    from pydantic import ValidationError
+
+    from expense_api.config.settings import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, app_env="prod")  # type: ignore[arg-type]
+
+
+def test_cors_regex_is_anchored_at_both_ends() -> None:
+    """An unanchored regex would match http://localhost:3000.attacker.com."""
+    from expense_api.config.settings import Settings
+
+    settings = Settings(_env_file=None, web_host="http://localhost:3000")
+
+    assert settings.cors_allow_origin_regex.startswith("^")
+    assert settings.cors_allow_origin_regex.endswith("$")
+
+
+@pytest.mark.asyncio
+async def test_preflight_echoes_explicit_origin_not_wildcard(client: AsyncClient) -> None:
+    """Browsers reject `*` for credentialed requests; the exact origin must come back."""
+    response = await client.options(
+        "/api/v1/health",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert response.headers["access-control-allow-credentials"] == "true"
+
+
+@pytest.mark.asyncio
+async def test_unknown_origin_is_not_allowed(client: AsyncClient) -> None:
+    response = await client.options(
+        "/api/v1/health",
+        headers={
+            "Origin": "http://localhost:3000.attacker.com",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert "access-control-allow-origin" not in response.headers

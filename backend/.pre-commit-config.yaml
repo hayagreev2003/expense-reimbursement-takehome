@@ -1,0 +1,9 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Pinned to the same version as the dev dependency in pyproject.toml. When one moves,
+    # move the other, or CI and the hook will disagree about what clean means.
+    rev: v0.16.7
+    hooks:
+      - id: ruff-format
+      - id: ruff
+        args: [--fix]

@@ -1,0 +1,76 @@
+[project]
+name = "expense-api"
+version = "0.1.0"
+description = "Travel expense reimbursement system for Nortex Industries"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi~=0.141.1",
+    "uvicorn[standard]~=0.52.4",
+    "pydantic~=2.13.5",
+    "pydantic-settings~=2.15.0",
+    "sqlalchemy[asyncio]~=2.0.52",
+    # SQLite, deliberately: this application owns its own single-file database and shares a
+    # server with nothing. Alembic uses the stdlib sqlite3 driver, so there is no sync extra.
+    "aiosqlite~=0.21.0",
+    "alembic~=1.19.2",
+    # Policy versions are authored as YAML and loaded into a JSON column at seed time.
+    "pyyaml~=6.0.3",
+    # Settlement export must write into the supplied template without clobbering its formulas.
+    "openpyxl~=3.1.5",
+    # Wraps the tesseract binary installed in the backend image (see backend/Dockerfile).
+    "pytesseract~=0.3.13",
+    "pillow~=12.3.0",
+    "python-multipart~=0.0.32",
+]
+
+[project.optional-dependencies]
+# Optional extraction adapter. Never imported unless a credential is present at runtime.
+# Untested in the dev environment for this build - there is no API credential available.
+llm = ["anthropic~=1.5.0"]
+
+[dependency-groups]
+dev = [
+    "pytest~=9.1.1",
+    "pytest-asyncio~=1.4.0",
+    "ruff~=0.16.7",
+    "mypy~=2.3.1",
+    "types-pyyaml~=6.0.12",
+    # Drives the FastAPI ASGI test client.
+    "httpx~=0.28.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/expense_api"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+markers = [
+    # Tests where Postgres, not Python, decides the outcome. Skipped without TEST_DATABASE_URL;
+    # CI sets REQUIRE_TEST_DATABASE=1 to turn that skip into a failure.
+    "db: requires a real database connection",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["src/expense_api"]
+strict = true
+# SQLAlchemy's declarative base and Alembic's generated revisions are not worth fighting.
+plugins = []
+
+[[tool.mypy.overrides]]
+module = ["pytesseract.*"]
+ignore_missing_imports = true

@@ -1,0 +1,40 @@
+# Two services, no database server.
+#
+# The application's database is a SQLite file inside the api container's own volume. That is a
+# deliberate choice, not a shortcut: it binds no port, shares no server, and therefore cannot
+# collide with - or be mistaken for - any other database on the machine.
+#
+# Host ports default to the conventional 8000/3000 but are overridable, because a developer
+# machine frequently already has something on both. Set API_PORT / UI_PORT in a root .env;
+# see .env.example. The UI's API URL is a build arg, not a runtime env var - Next inlines
+# NEXT_PUBLIC_* at build time - and it must point at the port the *browser* sees.
+
+services:
+  api:
+    build: ./backend
+    environment:
+      APP_ENV: development
+      LOG_LEVEL: INFO
+      WEB_HOST: http://localhost:${UI_PORT:-3000}
+      PACK_DIR: /pack
+      DATABASE_PATH: /data/expense.db
+    volumes:
+      # Read-only by construction. The pack is the specification; nothing writes to it.
+      - ./pack:/pack:ro
+      # The database survives a container rebuild but is scoped to this compose project.
+      - api-data:/data
+    ports:
+      - "${API_PORT:-8000}:8000"
+
+  ui:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:${API_PORT:-8000}
+    depends_on:
+      - api
+    ports:
+      - "${UI_PORT:-3000}:3000"
+
+volumes:
+  api-data:

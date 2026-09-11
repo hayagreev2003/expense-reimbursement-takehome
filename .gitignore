@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Environment - never commit. See .env.example files for the documented shape.
+.env
+.env.local
+.env.*.local
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Local artefacts
+/exports/

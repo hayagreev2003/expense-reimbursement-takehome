@@ -1,0 +1,10 @@
+emp_code,name,email,designation,department,cost_centre,city,reporting_manager_code,role
+NX-4471,Chaitanya Reddy,chaitanya.reddy@nortexindustries.com,Manager - Key Accounts,Sales,CE110,Pune,NX-2210,Employee
+NX-2210,Suresh Iyer,suresh.iyer@nortexindustries.com,Deputy General Manager,Sales,CE110,Pune,NX-1108,Reporting Manager
+NX-1108,Meera Krishnan,meera.krishnan@nortexindustries.com,Head of Department - Sales,Sales,CE100,Mumbai,NX-1002,Head of Department
+NX-1002,Arvind Rao,arvind.rao@nortexindustries.com,Head of Division - Commercial,Commercial,CE001,Mumbai,NX-1000,Head of Division
+NX-1000,Nandita Shah,nandita.shah@nortexindustries.com,Managing Director,Corporate,CE001,Mumbai,,MD
+NX-3305,Ravi Menon,ravi.menon@nortexindustries.com,Manager - Finance Shared Services,Finance,CE900,Pune,NX-3300,Finance
+NX-3300,Kavitha Balan,kavitha.balan@nortexindustries.com,Controller,Finance,CE900,Pune,NX-1002,Finance
+NX-5182,Deepa Nair,deepa.nair@nortexindustries.com,Manager - Presales,Sales,CE110,Chennai,NX-2210,Employee
+NX-4490,Imran Qureshi,imran.qureshi@nortexindustries.com,Executive - Sales,Sales,CE110,Pune,NX-2210,Employee

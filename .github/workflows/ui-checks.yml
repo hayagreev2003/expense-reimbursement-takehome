@@ -1,0 +1,47 @@
+name: UI checks
+
+on:
+  pull_request:
+    paths: &ui_paths
+      - "frontend/**"
+      - ".github/workflows/ui-checks.yml"
+  push:
+    branches: [main]
+    paths: *ui_paths
+  workflow_dispatch:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Format check
+        run: npx prettier --check .
+
+      # No rtk on the runner, so the bare binary is the right call here. Locally it has to go
+      # through `rtk proxy` - see AGENTS.md.
+      - name: Lint
+        run: npx eslint .
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
