@@ -54,20 +54,23 @@ export function ClaimReview({ trqId }: { trqId: string }) {
         </Alert>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <Card className="overflow-hidden">
           <CardHeader>
             <CardTitle className="text-base">Claim lines</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto px-0">
-            <Table>
+            {/* table-fixed with explicit widths: with auto layout the long route
+                descriptions set the table width and the last two columns fall outside
+                the card. */}
+            <Table className="table-fixed">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Line</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Allowed</TableHead>
-                  <TableHead className="text-right">Disallowed</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="w-[42%]">Line</TableHead>
+                  <TableHead className="w-[15%] text-right">Amount</TableHead>
+                  <TableHead className="w-[15%] text-right">Allowed</TableHead>
+                  <TableHead className="w-[15%] text-right">Disallowed</TableHead>
+                  <TableHead className="w-[13%]">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

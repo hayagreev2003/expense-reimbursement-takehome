@@ -41,8 +41,11 @@ export function ClaimLineRow({
   return (
     <>
       <TableRow className={line.status === 'withdrawn' ? 'opacity-55' : undefined}>
-        <TableCell className="align-top">
-          <div className="font-medium">{line.description}</div>
+        <TableCell className="align-top whitespace-normal">
+          {/* whitespace-normal overrides shadcn's TableCell default of whitespace-nowrap: "Kempegowda International Airport (BLR) to Keys
+              Prime Hotel, Whitefield" is wider than the column and would otherwise push
+              Status and the Withdraw button off the right edge of the card. */}
+          <div className="font-medium break-words">{line.description}</div>
           <div className="text-muted-foreground mt-0.5 text-xs">
             {line.head}
             {line.line_date ? ` · ${line.line_date}` : ''}
@@ -56,7 +59,7 @@ export function ClaimLineRow({
           )}
         </TableCell>
 
-        <TableCell className="align-top text-right">
+        <TableCell className="align-top text-right whitespace-nowrap">
           <Money amount={line.gross_amount} />
           {line.tax_share !== '0.00' && (
             <div className="text-muted-foreground text-xs">
@@ -65,14 +68,14 @@ export function ClaimLineRow({
           )}
         </TableCell>
 
-        <TableCell className="align-top text-right">
+        <TableCell className="align-top text-right whitespace-nowrap">
           <Money
             amount={line.allowed_amount}
             className={line.allowed_amount === '0.00' ? 'text-muted-foreground' : ''}
           />
         </TableCell>
 
-        <TableCell className="align-top text-right">
+        <TableCell className="align-top text-right whitespace-nowrap">
           {line.disallowed_amount !== '0.00' ? (
             <Money amount={line.disallowed_amount} className="text-rose-700" />
           ) : (
@@ -80,7 +83,7 @@ export function ClaimLineRow({
           )}
         </TableCell>
 
-        <TableCell className="align-top">
+        <TableCell className="align-top whitespace-nowrap">
           <Badge variant="outline" className={STATUS_STYLES[line.status] ?? ''}>
             {STATUS_LABELS[line.status] ?? line.status}
           </Badge>
@@ -101,7 +104,7 @@ export function ClaimLineRow({
 
       {notes.length > 0 && (
         <TableRow className="hover:bg-transparent">
-          <TableCell colSpan={5} className="pt-0">
+          <TableCell colSpan={5} className="pt-0 whitespace-normal">
             <ul className="space-y-1">
               {notes.map(note => (
                 <li key={note.rule_id} className="text-muted-foreground flex gap-2 text-xs">

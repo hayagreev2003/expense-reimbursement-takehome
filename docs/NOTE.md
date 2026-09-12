@@ -74,6 +74,16 @@ eslint, `tsc` and vitest.
 - **SQLite serialises writers.** Two approvers acting at once is prevented by an application-level
   version check, not by row-level locking. The test exercises the version check, which is the
   honest thing it proves. On Postgres the same code would be stronger.
+- **The role switcher is decorative.** It lists the employee master and clears cached queries
+  on change, but nothing downstream reads the selected role yet — there is only one screen and
+  it always shows the employee's own claim. It is scaffolding for the queues, not a working
+  permission boundary.
+- **Folio lines all carry the check-in date.** Amounts come from the message body, which states
+  `Nights 3` but not a date per line, so laundry and in-room dining are dated 16 Jun rather than
+  the 17th and 18th the image shows. It does not change this claim — the meal cap passes on any
+  single day — but it would matter on a trip with several meals, and the display is wrong.
+- **Phone-width layout is unverified.** The grid stacks below `lg` and the table scrolls
+  horizontally, but I could not resize the browser to check it.
 - **Withdrawn lines are per-process state.** They belong on the claim row and are not persisted
   yet, so a restart forgets them.
 - **The Tier 2 list is a guess**, as above. On a trip to a city nobody has classified, the system
