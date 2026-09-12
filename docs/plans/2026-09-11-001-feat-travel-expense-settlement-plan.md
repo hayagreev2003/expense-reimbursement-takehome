@@ -464,7 +464,7 @@ Submission is blocked while any line is `held` or lacks a proof reference. `Draf
 
 ---
 
-- [ ] **Unit 6: Policy engine, tax apportionment, and settlement summary**
+- [x] **Unit 6: Policy engine, tax apportionment, and settlement summary**
 
 **Goal:** Every claim line resolves to allowed, disallowed, needs-input or rejected with a citable policy reference, and the settlement summary computes correctly against the advance.
 
