@@ -37,7 +37,7 @@ from expense_api.evidence.classify import produces_claim_lines
 from expense_api.evidence.dedup import DedupResult, find_duplicates
 from expense_api.evidence.extractors.base import ExtractedItem, ExtractionResult, Extractor
 from expense_api.evidence.extractors.registry import get_extractor
-from expense_api.evidence.ingest import parse_eml
+from expense_api.evidence.ingest import AttachmentNotFoundError, EmailParseError, parse_eml
 from expense_api.policy.engine import LineOutcome, evaluate_lines
 from expense_api.policy.registry import EvaluationContext, LineUnderReview
 from expense_api.policy.tax import apportion_tax
@@ -87,7 +87,7 @@ async def build_claim(
     employee = (
         await session.execute(select(Employee).where(Employee.id == travel_request.employee_id))
     ).scalar_one()
-    policy = await _policy_for(session, travel_request)
+    policy = await policy_for(session, travel_request)
     documents = await _documents_for(session, travel_request)
     advance_drawn = await _advance_for(session, travel_request)
 
@@ -112,7 +112,19 @@ async def build_claim(
             set_aside[document.source_filename] = _why_set_aside(document.doc_kind)
             continue
 
-        parsed = parse_eml(emails_dir / document.source_filename, receipts_dir=receipts_dir)
+        try:
+            message_path, attachment_dir = _locate(document, emails_dir, receipts_dir)
+            parsed = parse_eml(message_path, receipts_dir=attachment_dir)
+        except (AttachmentNotFoundError, EmailParseError, OSError, ValueError) as exc:
+            # One unreadable document must not take the other fourteen down with it, and it
+            # must not vanish either: it surfaces as needs-input, which is visible and blocks
+            # submission, rather than as a 500 or a silently shorter claim.
+            logger.warning("Could not read %s: %s", document.source_filename, exc)
+            needs_input[document.source_filename] = f"This document could not be read: {exc}"
+            document.extraction_status = ExtractionStatus.NEEDS_INPUT
+            document.needs_input_reason = str(exc)
+            continue
+
         result = engine.extract(parsed, document.doc_kind)
 
         if result.status is ExtractionStatus.NEEDS_INPUT:
@@ -224,6 +236,21 @@ def _with_tax_shares(result: ExtractionResult) -> list[tuple[ExtractedItem, Deci
     return list(zip(items, shares, strict=True))
 
 
+def _locate(
+    document: EvidenceDocument, emails_dir: Path, receipts_dir: Path
+) -> tuple[Path, Path]:
+    """Where this document's message and its attachments actually are.
+
+    Pack evidence lives in the pack's two directories. An employee upload lives beside its own
+    attachment under the upload directory, and carries `source_path` saying so - otherwise the
+    pipeline would look for it in a read-only directory it will never be in.
+    """
+    if document.source_path:
+        path = Path(document.source_path)
+        return path, path.parent
+    return emails_dir / document.source_filename, receipts_dir
+
+
 def _why_set_aside(kind: DocKind) -> str:
     match kind:
         case DocKind.PROMOTIONAL:
@@ -255,7 +282,7 @@ def _evaluation_context(
     )
 
 
-async def _policy_for(session: AsyncSession, request: TravelRequest) -> PolicyVersion:
+async def policy_for(session: AsyncSession, request: TravelRequest) -> PolicyVersion:
     """The version in force for the trip's dates, not simply the newest one."""
     version = (
         (

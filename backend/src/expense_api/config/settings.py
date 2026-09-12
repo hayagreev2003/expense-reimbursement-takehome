@@ -50,12 +50,20 @@ class Settings(BaseSettings):
     # The specification pack is read-only input. Nothing in this application writes to it.
     pack_dir: Path = PROJECT_ROOT / "pack"
 
+    # Where an employee's own uploads land. Deliberately outside pack_dir: the pack is the
+    # specification and is mounted read-only, so an upload written there would fail at runtime
+    # rather than at review time.
+    upload_dir: Path = BACKEND_ROOT / "data" / "uploads"
+
+    # Per-file ceiling for an upload, enforced while the body is streamed to disk.
+    max_upload_bytes: int = 10 * 1024 * 1024
+
     # Which extraction adapter the ingestion pipeline uses. "llm" requires anthropic_api_key
     # and is untested in this build - there is no credential available in the dev environment.
     extractor: Literal["rule_based", "llm"] = "rule_based"
     anthropic_api_key: str | None = None
 
-    @field_validator("database_path", "pack_dir")
+    @field_validator("database_path", "pack_dir", "upload_dir")
     @classmethod
     def _resolve_against_backend_root(cls, value: Path) -> Path:
         """Anchor relative paths to the package, not to the current working directory.

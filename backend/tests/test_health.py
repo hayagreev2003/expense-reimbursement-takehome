@@ -67,6 +67,27 @@ async def test_preflight_echoes_explicit_origin_not_wildcard(client: AsyncClient
 
 
 @pytest.mark.asyncio
+async def test_preflight_allows_the_identity_header(client: AsyncClient) -> None:
+    """Every request the browser makes carries X-Emp-Code, and it is not CORS-safelisted.
+
+    Without it in allow_headers the middleware refuses the preflight before any route runs, and
+    the symptom in the browser is that the whole API appears unreachable.
+    """
+    response = await client.options(
+        "/api/v1/me",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "content-type,x-emp-code",
+        },
+    )
+
+    assert response.status_code == 200
+    allowed = response.headers["access-control-allow-headers"].lower()
+    assert "x-emp-code" in allowed
+
+
+@pytest.mark.asyncio
 async def test_unknown_origin_is_not_allowed(client: AsyncClient) -> None:
     response = await client.options(
         "/api/v1/health",

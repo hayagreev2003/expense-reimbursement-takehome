@@ -181,6 +181,19 @@ class ClaimStatus(enum.StrEnum):
     REJECTED = "rejected"
 
 
+class NotificationKind(enum.StrEnum):
+    """What happened. The recipient is stored separately - the same event notifies two people
+    with different wording (the employee is told their claim moved; the next approver is told
+    something is waiting)."""
+
+    CLAIM_SUBMITTED = "claim_submitted"
+    AWAITING_YOUR_APPROVAL = "awaiting_your_approval"
+    CLAIM_APPROVED = "claim_approved"
+    CLAIM_RETURNED = "claim_returned"
+    CLAIM_REJECTED = "claim_rejected"
+    CLAIM_VERIFIED = "claim_verified"
+
+
 class ApprovalDecision(enum.StrEnum):
     PENDING = "pending"
     APPROVED = "approved"
@@ -319,6 +332,11 @@ class EvidenceDocument(Base, ExternalIdMixin, TimestampMixin):
     )
 
     source_filename: Mapped[str] = mapped_column(String(200))
+    # Where the message actually lives. Null for anything seeded out of the pack, which is
+    # always resolved against the pack's own mail directory. An employee upload is not in the
+    # pack - it is under settings.upload_dir - so it has to carry its own location or the
+    # pipeline would look for it in a read-only directory it will never be in.
+    source_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     message_id: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
     sender: Mapped[str | None] = mapped_column(String(200), nullable=True)
     subject: Mapped[str | None] = mapped_column(String(400), nullable=True)
@@ -546,6 +564,49 @@ class PaymentRecord(Base, ExternalIdMixin, TimestampMixin):
     released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     amount: Mapped[Decimal] = mapped_column(Money)
     reference: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+
+class Notification(Base, ExternalIdMixin):
+    """One addressed message to one person.
+
+    Separate from ClaimEvent on purpose. ClaimEvent is an append-only audit of what the system
+    did; a notification is addressed, has a read state, and is written for a human. Deriving an
+    inbox from the audit log instead would mean every read toggle became a write to a table
+    whose whole point is that it is never updated.
+    """
+
+    __tablename__ = "notification"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    recipient_employee_id: Mapped[int] = mapped_column(ForeignKey("employee.id"), index=True)
+    travel_request_id: Mapped[int | None] = mapped_column(
+        ForeignKey("travel_request.id"), nullable=True, index=True
+    )
+    claim_id: Mapped[int | None] = mapped_column(
+        ForeignKey("settlement_claim.id"), nullable=True, index=True
+    )
+    actor_employee_id: Mapped[int | None] = mapped_column(ForeignKey("employee.id"), nullable=True)
+
+    kind: Mapped[NotificationKind] = mapped_column(_enum(NotificationKind, 32))
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text)
+    # Where the notification takes you. A human-facing TRQ id, not a row id.
+    trq_id: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    recipient: Mapped[Employee] = relationship(foreign_keys=[recipient_employee_id])
+    actor: Mapped[Employee | None] = relationship(foreign_keys=[actor_employee_id])
+
+
+Index(
+    "ix_notification_recipient_created",
+    Notification.recipient_employee_id,
+    Notification.created_at,
+)
 
 
 class ClaimEvent(Base):

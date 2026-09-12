@@ -79,7 +79,7 @@ async def ingest_directory(
             continue
 
         kind = classify(parsed, claimant_email=claimant_email, claimant_name=claimant_name)
-        document = _to_document(parsed, kind, travel_request_id)
+        document = to_document(parsed, kind, travel_request_id)
         session.add(document)
         report.documents.append(document)
         if parsed.message_id:
@@ -108,12 +108,22 @@ async def ingest_directory(
     return report
 
 
-def _to_document(
-    parsed: ParsedEmail, kind: DocKind, travel_request_id: int | None
+def to_document(
+    parsed: ParsedEmail,
+    kind: DocKind,
+    travel_request_id: int | None,
+    *,
+    source_path: str | None = None,
 ) -> EvidenceDocument:
+    """One parsed message as a row.
+
+    `source_path` is set for anything that does not live in the pack's own mail directory - an
+    employee upload - so the pipeline can find the file again without guessing at a directory.
+    """
     return EvidenceDocument(
         travel_request_id=travel_request_id,
         source_filename=parsed.source_filename,
+        source_path=source_path,
         message_id=parsed.message_id,
         sender=parsed.sender_email,
         subject=parsed.subject,
