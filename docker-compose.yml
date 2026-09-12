@@ -11,15 +11,25 @@
 
 services:
   api:
-    build: ./backend
+    # Context is the repo root, not ./backend: the Dockerfile copies `pack/` into the image so
+    # a deployment with no checkout to mount from still has the specification.
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     environment:
       APP_ENV: development
       LOG_LEVEL: INFO
+      # Set DEMO_RESET_ENABLED=true in a root .env to get the "Reset demo" button. Both sides
+      # read the same variable, so they cannot drift into a button that 404s.
+      DEMO_RESET_ENABLED: ${DEMO_RESET_ENABLED:-false}
+      DEMO_RESET_TOKEN: ${DEMO_RESET_TOKEN:-}
       WEB_HOST: http://localhost:${UI_PORT:-3000}
       PACK_DIR: /pack
       DATABASE_PATH: /data/expense.db
     volumes:
-      # Read-only by construction. The pack is the specification; nothing writes to it.
+      # Read-only by construction. The pack is the specification; nothing writes to it. This
+      # mount shadows the copy baked into the image, so an edit to the pack takes effect
+      # without a rebuild.
       - ./pack:/pack:ro
       # The database survives a container rebuild but is scoped to this compose project.
       - api-data:/data
@@ -31,6 +41,8 @@ services:
       context: ./frontend
       args:
         NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:${API_PORT:-8000}
+        NEXT_PUBLIC_DEMO_RESET_ENABLED: ${DEMO_RESET_ENABLED:-false}
+        NEXT_PUBLIC_DEMO_RESET_TOKEN: ${DEMO_RESET_TOKEN:-}
     depends_on:
       - api
     ports:

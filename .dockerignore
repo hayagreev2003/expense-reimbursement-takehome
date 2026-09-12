@@ -1,0 +1,21 @@
+# The api image builds from the repository root, so the whole tree is the context unless it is
+# excluded here. Anything listed below is either large, machine-specific, or a database.
+.git
+.github
+docs
+
+**/node_modules
+frontend/.next
+frontend/out
+
+# The development database and whatever has been uploaded against it. Never ship either.
+backend/data
+backend/.venv
+backend/.pytest_cache
+backend/.ruff_cache
+backend/.mypy_cache
+**/__pycache__
+**/*.pyc
+
+**/.env
+**/.env.local

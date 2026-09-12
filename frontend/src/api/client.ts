@@ -39,9 +39,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
-  postForm: <T>(path: string, form: FormData) =>
-    request<T>(path, { method: 'POST', body: form }),
+  // `init` is for the rare header a route needs and the session does not supply - today only
+  // X-Demo-Token. request() merges it last, so it wins over the identity header; keep callers
+  // to headers the session does not already own.
+  post: <T>(path: string, body?: unknown, init?: RequestInit) =>
+    request<T>(path, {
+      ...init,
+      method: 'POST',
+      body: body ? JSON.stringify(body) : undefined,
+    }),
+  postForm: <T>(path: string, form: FormData) => request<T>(path, { method: 'POST', body: form }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };

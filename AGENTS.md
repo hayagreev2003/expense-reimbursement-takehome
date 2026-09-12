@@ -56,6 +56,21 @@ quietly create a second database.
 Alembic on SQLite needs `render_as_batch=True` in `env.py`; without it any `ALTER TABLE` that
 SQLite cannot do natively fails at migration time rather than at autogenerate time.
 
+## Demo reset and deployment
+
+`POST /api/v1/demo/reset` wipes every claim and re-seeds from the pack, so a hosted walkthrough
+can be replayed without a shell. Off unless `DEMO_RESET_ENABLED=true`, and 404 - not 403 - when
+off. It drops the append-only triggers on `claim_event` to do the wipe and restores them in a
+`finally`; `tests/test_demo_reset.py` is what stops that regressing.
+
+`backend/Dockerfile` builds from the **repository root**, because the image has to carry
+`pack/`. A build with a `./backend` context cannot see it and the container starts with an empty
+seed.
+
+Read `docs/agents/deployment.md` before changing any of that, or before touching CORS - the
+allowed origins are now `WEB_HOST` plus an optional `WEB_ORIGIN_REGEX_EXTRA` pattern for
+Vercel's per-deployment preview subdomains.
+
 ## Layout
 
 ```
@@ -69,6 +84,7 @@ backend/src/expense_api/     FastAPI service, installed package (not a root main
   claims/                    pipeline (computed draft), materialise (rows at submit), router
   approvals/                 routing, decision service, approver queue router
   notifications/             addressed messages, one row per recipient
+  demo/                      reset: wipe everything the demo produced, re-seed from pack/
   finance/  export/  seed/
 backend/tests/               flat, test_<subject>.py
 frontend/src/

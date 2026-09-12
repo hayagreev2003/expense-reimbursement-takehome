@@ -13,3 +13,15 @@ export const apiPrefix = '/api/v1';
 
 export const apiUrl = (path: string): string =>
   `${baseUrl.replace(/\/$/, '')}${apiPrefix}${path.startsWith('/') ? path : `/${path}`}`;
+
+/**
+ * The demo reset, and whether the UI offers it.
+ *
+ * Two honest caveats. `NEXT_PUBLIC_*` is inlined into the bundle, so this token is readable by
+ * anyone who opens the page - it keeps a passing scanner off the endpoint, it is not a secret.
+ * And the flag only hides the button: the server decides whether the route exists at all, via
+ * DEMO_RESET_ENABLED, and answers 404 when it does not.
+ */
+export const demoResetEnabled = process.env.NEXT_PUBLIC_DEMO_RESET_ENABLED === 'true';
+
+export const demoResetToken = process.env.NEXT_PUBLIC_DEMO_RESET_TOKEN ?? '';

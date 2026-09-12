@@ -8,6 +8,8 @@ import asyncio
 import logging
 import sys
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from expense_api.config.logging_config import setup_logging
 from expense_api.config.settings import settings
 from expense_api.db.database import async_session_maker
@@ -18,13 +20,24 @@ from expense_api.seed.trip import seed_anchor_trip
 logger = logging.getLogger(__name__)
 
 
+async def seed_all(session: AsyncSession) -> tuple[int, int]:
+    """Every seed step, against a caller-supplied session. Does not commit.
+
+    Split out from `run_seed` so the demo reset can wipe and re-seed inside one transaction on
+    one connection. SQLite serialises writers, so a reset that deleted on the request session
+    and then re-seeded on a second one would be waiting on a lock it holds itself.
+    """
+    employees = await seed_employees(session, settings.pack_dir / "employee_master.csv")
+    policies = await seed_policy_versions(session)
+    await seed_anchor_trip(session)
+    return employees, policies
+
+
 async def run_seed() -> tuple[int, int]:
     async with async_session_maker() as session:
-        employees = await seed_employees(session, settings.pack_dir / "employee_master.csv")
-        policies = await seed_policy_versions(session)
-        await seed_anchor_trip(session)
+        counts = await seed_all(session)
         await session.commit()
-    return employees, policies
+    return counts
 
 
 def main() -> int:

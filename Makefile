@@ -50,7 +50,9 @@ revision: ## Autogenerate a migration: make revision m="add claims"
 	cd $(BACKEND) && uv run alembic revision --autogenerate -m "$(m)"
 
 reset-db: ## Delete the local database file and rebuild it from migrations + seed
-	rm -f $(BACKEND)/data/expense.db
+	# The -wal and -shm siblings go too. Deleting the database alone leaves SQLite pointing a
+	# stale write-ahead log at a new file, and the next connection fails with "disk I/O error".
+	rm -f $(BACKEND)/data/expense.db $(BACKEND)/data/expense.db-wal $(BACKEND)/data/expense.db-shm
 	$(MAKE) migrate seed
 
 # ----------------------------------------------------------------------- quality

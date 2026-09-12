@@ -98,3 +98,56 @@ async def test_unknown_origin_is_not_allowed(client: AsyncClient) -> None:
     )
 
     assert "access-control-allow-origin" not in response.headers
+
+
+def test_cors_escapes_the_exact_origin() -> None:
+    """The origin is data, not a pattern: an unescaped dot matches any character."""
+    import re
+
+    from expense_api.config.settings import Settings
+
+    pattern = Settings(_env_file=None, web_host="http://localhost:3000").cors_allow_origin_regex
+
+    assert re.match(pattern, "http://localhost:3000")
+    assert not re.match(pattern, "http://localhostX3000")
+
+
+def test_a_preview_origin_pattern_widens_cors_without_opening_it() -> None:
+    """Vercel mints a subdomain per deployment, so previews need a pattern, not an origin."""
+    import re
+
+    from expense_api.config.settings import Settings
+
+    pattern = Settings(
+        _env_file=None,
+        web_host="https://nortex.vercel.app",
+        web_origin_regex_extra=r"https://nortex-[a-z0-9-]+\.vercel\.app",
+    ).cors_allow_origin_regex
+
+    assert re.match(pattern, "https://nortex.vercel.app")
+    assert re.match(pattern, "https://nortex-git-feat-abc.vercel.app")
+    assert not re.match(pattern, "https://nortex.vercel.app.attacker.com")
+    assert not re.match(pattern, "https://attacker.app")
+
+
+def test_a_blank_environment_variable_means_unset() -> None:
+    """Compose and Render substitute an unset variable as "", not as nothing at all.
+
+    Left as an empty string, the regex fragment would add `|` to the alternation - which
+    matches the empty origin - and the token would demand an empty X-Demo-Token header.
+    """
+    import re
+
+    from expense_api.config.settings import Settings
+
+    settings = Settings(_env_file=None, web_origin_regex_extra="", demo_reset_token="")
+
+    assert settings.demo_reset_token is None
+    assert not re.match(settings.cors_allow_origin_regex, "")
+
+
+def test_the_demo_reset_gate_is_closed_by_default() -> None:
+    """It deletes every claim in the database. Nothing but an explicit opt-in turns it on."""
+    from expense_api.config.settings import Settings
+
+    assert not Settings(_env_file=None).demo_reset_enabled

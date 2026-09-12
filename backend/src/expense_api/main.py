@@ -13,6 +13,7 @@ from expense_api.approvals.router import router as approvals_router
 from expense_api.claims.router import router as claims_router
 from expense_api.config.logging_config import setup_logging
 from expense_api.config.settings import settings
+from expense_api.demo.router import router as demo_router
 from expense_api.handlers.errors import register_exception_handlers
 from expense_api.identity.router import router as identity_router
 from expense_api.notifications.router import router as notifications_router
@@ -55,6 +56,10 @@ def create_app() -> FastAPI:
     app.include_router(claims_router, prefix="/api/v1")
     app.include_router(approvals_router, prefix="/api/v1")
     app.include_router(notifications_router, prefix="/api/v1")
+    # Always mounted, never always usable: the route itself answers 404 unless
+    # DEMO_RESET_ENABLED is on. Mounting conditionally would make the generated OpenAPI - and
+    # therefore the frontend's generated client - differ between environments.
+    app.include_router(demo_router, prefix="/api/v1")
 
     @app.get("/api/v1/health", tags=["meta"])
     async def health() -> dict[str, str]:

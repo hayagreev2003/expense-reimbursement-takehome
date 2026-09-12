@@ -2,8 +2,9 @@
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import type { CurrentUser } from '@/features/session/api/session';
+import { ResetDemoButton } from '@/features/demo/components/reset-demo-button';
 import { NotificationBell } from '@/features/notifications/components/notification-bell';
+import type { CurrentUser } from '@/features/session/api/session';
 import { useSession } from '@/store/session';
 import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
@@ -30,8 +31,11 @@ export function AppShell({ me, children }: { me: CurrentUser | undefined; childr
               <div className="text-muted-foreground text-xs">{me.designation}</div>
             </div>
           )}
-          {me && <Badge variant="secondary">{me.profile === 'admin' ? 'Approver' : 'Employee'}</Badge>}
+          {me && (
+            <Badge variant="secondary">{me.profile === 'admin' ? 'Approver' : 'Employee'}</Badge>
+          )}
           <NotificationBell />
+          <ResetDemoButton />
           <Button
             variant="outline"
             size="sm"

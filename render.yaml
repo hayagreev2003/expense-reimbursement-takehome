@@ -1,0 +1,76 @@
+# Render Blueprint for the API. The UI deploys to Vercel and is not described here.
+#
+# What this file assumes, stated once:
+#
+# * The database is ephemeral on the free plan. Render gives a free web service no disk, so
+#   `/app/data/expense.db` is lost on every restart and redeploy. For a demo that is the
+#   desired behaviour, not a defect: the entrypoint runs `alembic upgrade head` and the seed on
+#   every boot, so a cold start *is* a reset. `POST /api/v1/demo/reset` covers the other case -
+#   resetting mid-walkthrough, without waiting for a restart.
+#
+# * A free service sleeps after roughly fifteen minutes idle, and this image carries tesseract,
+#   so the wake-up is slow enough for a client to think the link is broken. Open it a few
+#   minutes before the demo, or move to `plan: starter` and attach the disk below.
+#
+# * The pack is inside the image (see backend/Dockerfile), because a deployment has no
+#   repository checkout to mount from.
+services:
+  - type: web
+    name: nortex-expense-api
+    runtime: docker
+    plan: free
+    region: singapore
+    # Root context: the Dockerfile copies both backend/ and pack/.
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health
+    autoDeployTrigger: commit
+
+    # Uncomment together with `plan: starter` to make the database survive a restart. A disk is
+    # not available on the free plan, and mounting one silently changes nothing if it is.
+    # disk:
+    #   name: expense-data
+    #   mountPath: /app/data
+    #   sizeGB: 1
+
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+
+      # The browser's origin, exactly - scheme and host, no trailing slash, no path. CORS is an
+      # anchored regex built from this; a mismatch shows up in the browser as an opaque network
+      # error while the server logs a clean 200. Set after the Vercel project exists.
+      - key: WEB_HOST
+        sync: false
+
+      # Vercel mints a new subdomain for every preview deployment, so an exact origin can only
+      # ever match production. This is the pattern that lets previews through. Leave it unset
+      # if only the production URL should be able to call the API.
+      #   https://nortex-expense-[a-z0-9-]+\.vercel\.app
+      - key: WEB_ORIGIN_REGEX_EXTRA
+        sync: false
+
+      # On the free plan this path is ephemeral and that is deliberate; with the disk above it
+      # is the mount point.
+      - key: DATABASE_PATH
+        value: /app/data/expense.db
+      - key: UPLOAD_DIR
+        value: /app/data/uploads
+
+      # Re-seed on every boot. Idempotent, so it is a no-op when a disk is attached and the
+      # data is already there.
+      - key: SEED_ON_START
+        value: "true"
+
+      # The reset endpoint, on for the demo and behind a generated token. Copy the value out of
+      # the Render dashboard into the Vercel project as NEXT_PUBLIC_DEMO_RESET_TOKEN.
+      - key: DEMO_RESET_ENABLED
+        value: "true"
+      - key: DEMO_RESET_TOKEN
+        generateValue: true
+
+      # rule_based needs no credentials and is the tested path.
+      - key: EXTRACTOR
+        value: rule_based

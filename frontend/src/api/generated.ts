@@ -278,6 +278,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/demo/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset
+         * @description Return the demo to its starting state: the anchor trip, its inbox, nothing claimed yet.
+         *
+         *     Deliberately not behind `CurrentUser`. The reset deletes claims for every profile, so there
+         *     is no caller it could be scoped to, and the profile being reset is frequently the one whose
+         *     session is mid-flow. The token is the access control.
+         */
+        post: operations["reset_api_v1_demo_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -583,6 +607,34 @@ export interface components {
             step_sequence: number;
             /** New Version */
             new_version: number;
+        };
+        /** ResetDemoResponse */
+        ResetDemoResponse: {
+            /**
+             * Deleted Rows
+             * @description Rows removed across every transactional table.
+             */
+            deleted_rows: number;
+            /**
+             * Deleted Uploads
+             * @description Employee-uploaded files removed from disk.
+             */
+            deleted_uploads: number;
+            /**
+             * Employees
+             * @description Employees present after the re-seed.
+             */
+            employees: number;
+            /**
+             * Policy Versions
+             * @description Policy versions present after the re-seed.
+             */
+            policy_versions: number;
+            /**
+             * Trq Id
+             * @description The anchor trip the demo starts from.
+             */
+            trq_id: string;
         };
         /**
          * SetAsideDocumentResponse
@@ -1168,6 +1220,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MarkReadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_api_v1_demo_reset_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResetDemoResponse"];
                 };
             };
             /** @description Validation Error */

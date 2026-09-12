@@ -38,6 +38,20 @@ make reset-db  # throw the database away and rebuild it from migrations + seed
 
 `make help` lists everything.
 
+## Show it to someone
+
+```bash
+DEMO_RESET_ENABLED=true make up
+```
+
+That adds a "Reset demo" button to the header. It deletes every claim, for every profile, and
+puts the trip and its inbox back, so the whole flow can be shown again from the top — the same
+thing `make reset-db` does locally, reachable from a browser. `POST /api/v1/demo/reset` is the
+endpoint behind it, and it is off unless that variable says otherwise.
+
+`render.yaml` deploys the API to Render; the UI is a normal Vercel import of `frontend/`. The
+runbook, and what the free plan costs you, is in `docs/agents/deployment.md`.
+
 ## Layout
 
 ```

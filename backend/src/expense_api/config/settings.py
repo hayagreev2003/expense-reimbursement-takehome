@@ -14,6 +14,7 @@ Two conventions worth stating explicitly:
    every deployed environment, right up until a new one appears.
 """
 
+import re
 from functools import cached_property
 from pathlib import Path
 from typing import Literal
@@ -47,6 +48,13 @@ class Settings(BaseSettings):
     # Frontend origin. Used to build the CORS regex; see the note in main.py.
     web_host: str = "http://localhost:3000"
 
+    # A second, *pattern* origin, for hosts that mint a new URL per deployment. Vercel preview
+    # builds are the case this exists for: every preview gets its own subdomain, so an exact
+    # origin can only ever match production. Supply a regex fragment - no anchors, they are
+    # added here - e.g. `https://nortex-expense-[a-z0-9-]+\.vercel\.app`. Left unset, the
+    # allowed set is exactly `web_host` and nothing else.
+    web_origin_regex_extra: str | None = None
+
     # The specification pack is read-only input. Nothing in this application writes to it.
     pack_dir: Path = PROJECT_ROOT / "pack"
 
@@ -58,10 +66,28 @@ class Settings(BaseSettings):
     # Per-file ceiling for an upload, enforced while the body is streamed to disk.
     max_upload_bytes: int = 10 * 1024 * 1024
 
+    # Demo reset. Allowlist, not denylist: off unless something turns it on, so an environment
+    # nobody thought about cannot expose an endpoint that deletes every claim in the database.
+    # `demo_reset_token`, when set, must be echoed in an `X-Demo-Token` header.
+    demo_reset_enabled: bool = False
+    demo_reset_token: str | None = None
+
     # Which extraction adapter the ingestion pipeline uses. "llm" requires anthropic_api_key
     # and is untested in this build - there is no credential available in the dev environment.
     extractor: Literal["rule_based", "llm"] = "rule_based"
     anthropic_api_key: str | None = None
+
+    @field_validator("web_origin_regex_extra", "demo_reset_token", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, value: object) -> object:
+        """An empty environment variable means "not set", not "set to the empty string".
+
+        Compose and Render both substitute an unset variable as `""` rather than omitting it.
+        Left as-is, an empty token would demand a caller send an empty `X-Demo-Token`, and an
+        empty regex fragment would add `|` to the CORS alternation - which matches the empty
+        origin.
+        """
+        return None if isinstance(value, str) and not value.strip() else value
 
     @field_validator("database_path", "pack_dir", "upload_dir")
     @classmethod
@@ -93,7 +119,13 @@ class Settings(BaseSettings):
         allow_origin_regex disables allow_all_origins, which forces the explicit origin to be
         echoed back instead.
         """
-        return f"^{self.web_host.rstrip('/')}$"
+        # re.escape, because an unescaped origin is a pattern: the dots in
+        # `http://localhost:3000` match any character, so `http://localhostX3000` would be
+        # allowed too. Harmless on a dev host, not harmless on a public domain.
+        alternatives = [re.escape(self.web_host.rstrip("/"))]
+        if self.web_origin_regex_extra:
+            alternatives.append(self.web_origin_regex_extra)
+        return f"^(?:{'|'.join(alternatives)})$"
 
     @cached_property
     def docs_enabled(self) -> bool:

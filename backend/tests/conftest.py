@@ -22,6 +22,11 @@ os.environ.setdefault("DATABASE_PATH", str(_TEST_DB_DIR / "expense_test.db"))
 # Uploads land on disk. Pointed at the same throwaway directory so a test run cannot write into
 # backend/data/uploads - and, more importantly, so it can never write into the read-only pack.
 os.environ.setdefault("UPLOAD_DIR", str(_TEST_DB_DIR / "uploads"))
+# Pinned so the suite does not depend on the developer's .env. A real environment variable wins
+# over the .env file, and a developer who turned the demo reset on to try the button would
+# otherwise see the closed-gate test fail on their machine and pass in CI.
+os.environ.setdefault("DEMO_RESET_ENABLED", "false")
+os.environ.setdefault("DEMO_RESET_TOKEN", "")
 
 from collections.abc import AsyncIterator  # noqa: E402
 from typing import Any  # noqa: E402

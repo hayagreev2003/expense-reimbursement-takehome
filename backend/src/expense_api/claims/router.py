@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from expense_api.claims import serialisers
+from expense_api.claims import serialisers, withdrawals
 from expense_api.claims.lifecycle import submission_deadline
 from expense_api.claims.materialise import NotSubmittable, load_claim
 from expense_api.claims.materialise import submit as materialise_submit
@@ -59,10 +59,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 Session = Annotated[AsyncSession, Depends(get_async_session)]
-
-# Withdrawals are per-process state for this build. Persisting them belongs with the
-# SettlementClaim row; keeping it here keeps the demo honest about what is and is not stored.
-_WITHDRAWN: dict[str, set[str]] = {}
 
 
 @router.get("/employees", response_model=list[EmployeeResponse], tags=["reference"])
@@ -273,7 +269,7 @@ async def withdraw_line(
     re-evaluated, which can drop it into a lower approval band.
     """
     request = await _require_own_draft(session, trq_id, user)
-    _WITHDRAWN.setdefault(trq_id, set()).add(payload.description)
+    withdrawals.record(trq_id, payload.description)
 
     session.add(
         ClaimEvent(
@@ -410,9 +406,7 @@ async def _visible_trips(session: AsyncSession, user: Employee) -> list[TravelRe
         )
 
     return list(
-        (await session.execute(statement.order_by(TravelRequest.from_date.desc())))
-        .scalars()
-        .all()
+        (await session.execute(statement.order_by(TravelRequest.from_date.desc()))).scalars().all()
     )
 
 
@@ -509,5 +503,5 @@ async def _claim_for(session: AsyncSession, request: TravelRequest) -> ClaimDraf
         travel_request=request,
         emails_dir=settings.pack_dir / "sample_emails",
         receipts_dir=settings.pack_dir / "receipts",
-        withdrawn_descriptions=frozenset(_WITHDRAWN.get(request.trq_id, set())),
+        withdrawn_descriptions=withdrawals.for_trip(request.trq_id),
     )
