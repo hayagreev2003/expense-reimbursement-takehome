@@ -19,6 +19,7 @@ from expense_api.db.models import (
     SettlementClaim,
     TravelRequest,
 )
+from expense_api.evidence.extractors.ocr import ocr_available
 
 pytestmark = [pytest.mark.db, pytest.mark.asyncio]
 
@@ -133,6 +134,10 @@ async def test_a_submitted_claim_does_not_survive(
     assert await _count(db_session, SettlementClaim) == 0
 
 
+@pytest.mark.skipif(
+    not ocr_available(),
+    reason="the held line is the dinner bill, which is an image and needs tesseract",
+)
 async def test_a_withdrawn_line_is_held_again_afterwards(
     api_client: AsyncClient,
     seeded_trip: TravelRequest,
