@@ -5,6 +5,8 @@ so the whole URL map is readable in one place. Routers themselves declare no pre
 """
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,11 +16,31 @@ from expense_api.claims.router import router as claims_router
 from expense_api.config.logging_config import setup_logging
 from expense_api.config.settings import settings
 from expense_api.demo.router import router as demo_router
+from expense_api.evidence.extractors.ocr import warm_cache
 from expense_api.handlers.errors import register_exception_handlers
 from expense_api.identity.router import router as identity_router
 from expense_api.notifications.router import router as notifications_router
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Read the receipt images once before the first request can ask for them.
+
+    Not a migration - those stay in the entrypoint, because an app that migrates on boot races
+    itself as soon as it has more than one worker. This is a read-only cache warm, and it has to
+    happen per process, which is exactly what a lifespan is for.
+
+    Without it the first request to a draft claim runs tesseract on the event loop. On a small
+    shared-CPU instance that blocks long enough for the health check to fail, the process is
+    restarted, the cache is lost, and the next request starts over - so the service never serves
+    a claim at all.
+    """
+    read, seconds = warm_cache(settings.pack_dir / "receipts")
+    if read:
+        logger.info("Pre-read %d receipt image(s) in %.1fs", read, seconds)
+    yield
 
 
 def create_app() -> FastAPI:
@@ -27,6 +49,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Nortex Travel Expense Settlement",
         version="0.1.0",
+        lifespan=lifespan,
         docs_url="/docs" if settings.docs_enabled else None,
         redoc_url=None,
         openapi_url="/openapi.json" if settings.docs_enabled else None,

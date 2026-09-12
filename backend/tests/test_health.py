@@ -151,3 +151,33 @@ def test_the_demo_reset_gate_is_closed_by_default() -> None:
     from expense_api.config.settings import Settings
 
     assert not Settings(_env_file=None).demo_reset_enabled
+
+
+def test_warm_cache_reads_the_packs_receipts() -> None:
+    """The first HTTP request must not be the one that pays for OCR.
+
+    On a small shared-CPU instance that cost blocks the event loop long enough for the health
+    check to fail; the process restarts, the per-process cache is lost, and the next request
+    starts over - so the service never serves a claim at all.
+    """
+    from expense_api.config.settings import settings
+    from expense_api.evidence.extractors.ocr import ocr_available, warm_cache
+
+    if not ocr_available():
+        pytest.skip("tesseract is required to read the pack's receipt images")
+
+    read, seconds = warm_cache(settings.pack_dir / "receipts")
+
+    assert read == 2, "both receipt images should have been read"
+    assert seconds >= 0
+
+
+def test_warm_cache_survives_a_directory_that_is_not_there() -> None:
+    """A missing directory must not stop the application from starting."""
+    from pathlib import Path
+
+    from expense_api.evidence.extractors.ocr import warm_cache
+
+    read, _seconds = warm_cache(Path("/nonexistent/receipts"))
+
+    assert read == 0

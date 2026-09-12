@@ -78,6 +78,16 @@ before the two are joined. Leave it unset and the allowed set is `WEB_HOST` and 
 An empty string counts as unset in both cases — Compose and Render substitute an unset variable
 as `""` rather than omitting it, and an empty alternative would match the empty origin.
 
+### Vercel needs the framework named
+
+`frontend/vercel.json` pins `"framework": "nextjs"`. Without it, a project whose preset is
+"Other" runs `npm run build`, gets a `.next` directory, then fails the deploy with
+`No Output Directory named "public" found` - the build succeeded and the deploy did not, which
+reads like a build problem and is not one. Pinning it in the repository means a re-imported
+project cannot pick the wrong preset.
+
+The project's **Root Directory** must be `frontend`, and `vercel.json` lives inside it.
+
 ### The order to do it in
 
 1. Deploy the API from `render.yaml`. `WEB_HOST` is `sync: false`, so Render asks for it; put a

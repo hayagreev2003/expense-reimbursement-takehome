@@ -60,3 +60,37 @@ def ocr_available() -> bool:
     except Exception:  # noqa: BLE001
         return False
     return True
+
+
+def warm_cache(receipts_dir: Path) -> tuple[int, float]:
+    """Read every receipt image once, so no HTTP request is the first to pay for it.
+
+    A draft claim is evaluated live on every read, and evaluating it OCRs the images behind the
+    two bills. `ocr_image` is cached per process, so only the *first* request pays - but it pays
+    synchronously, on the event loop, and on a small shared-CPU instance that is long enough to
+    starve the health check, which restarts the process, which empties the cache. The service
+    then never serves a single claim.
+
+    Called at startup, where the cost is bounded, paid once, and visible in the boot log.
+    Returns how many images were read and how long it took.
+    """
+    import time
+
+    if not ocr_available():
+        logger.warning("tesseract unavailable: receipt images will not be read")
+        return 0, 0.0
+
+    started = time.monotonic()
+    read = 0
+    for path in sorted(receipts_dir.glob("*")):
+        if path.suffix.lower() not in {".png", ".jpg", ".jpeg"}:
+            continue
+        try:
+            ocr_image(path)
+            read += 1
+        except (OcrUnavailableError, OSError) as exc:
+            # One unreadable image must not stop the application from starting. It will surface
+            # as needs-input on the claim, which is visible, rather than as a failed boot.
+            logger.warning("Could not pre-read %s: %s", path.name, exc)
+
+    return read, time.monotonic() - started
