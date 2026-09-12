@@ -239,9 +239,7 @@ async def test_submission_routes_the_claim_and_notifies_both_sides(
 ) -> None:
     await _submit_ready_claim(api_client)
 
-    claim = (
-        await api_client.get(f"/api/v1/trips/{TRQ}/claim", headers=_as(CLAIMANT))
-    ).json()
+    claim = (await api_client.get(f"/api/v1/trips/{TRQ}/claim", headers=_as(CLAIMANT))).json()
     assert claim["status"] == "pending_approval"
     # Frozen: what the approver sees cannot move underneath them.
     assert claim["frozen"] is True
@@ -251,9 +249,7 @@ async def test_submission_routes_the_claim_and_notifies_both_sides(
     roles = [step["role"] for step in claim["chain"]]
     assert roles == ["Reporting Manager", "Finance"]
 
-    employee_inbox = (
-        await api_client.get("/api/v1/notifications", headers=_as(CLAIMANT))
-    ).json()
+    employee_inbox = (await api_client.get("/api/v1/notifications", headers=_as(CLAIMANT))).json()
     assert employee_inbox["unread_count"] == 1
     assert employee_inbox["items"][0]["kind"] == "claim_submitted"
 
@@ -384,9 +380,7 @@ async def test_approval_moves_the_claim_on_and_tells_everyone(
     assert decided.status_code == 200, decided.text
     assert decided.json()["claim_status"] == "pending_finance"
 
-    employee_inbox = (
-        await api_client.get("/api/v1/notifications", headers=_as(CLAIMANT))
-    ).json()
+    employee_inbox = (await api_client.get("/api/v1/notifications", headers=_as(CLAIMANT))).json()
     assert employee_inbox["unread_count"] == 1
     assert employee_inbox["items"][0]["kind"] == "claim_approved"
     assert "Suresh Iyer" in employee_inbox["items"][0]["title"]
@@ -403,9 +397,7 @@ async def test_finance_verification_is_the_last_step(
     await _submit_ready_claim(api_client)
 
     for approver in (MANAGER, FINANCE):
-        claim = (
-            await api_client.get(f"/api/v1/trips/{TRQ}/claim", headers=_as(approver))
-        ).json()
+        claim = (await api_client.get(f"/api/v1/trips/{TRQ}/claim", headers=_as(approver))).json()
         decided = await api_client.post(
             f"/api/v1/trips/{TRQ}/claim/decision",
             json={
@@ -418,18 +410,14 @@ async def test_finance_verification_is_the_last_step(
         assert decided.status_code == 200, decided.text
 
     assert decided.json()["claim_status"] == "verified"
-    employee_inbox = (
-        await api_client.get("/api/v1/notifications", headers=_as(CLAIMANT))
-    ).json()
+    employee_inbox = (await api_client.get("/api/v1/notifications", headers=_as(CLAIMANT))).json()
     assert employee_inbox["items"][0]["kind"] == "claim_verified"
 
 
 # -------------------------------------------------------------------- return
 
 
-async def test_a_return_needs_remarks(
-    api_client: AsyncClient, seeded_trip: TravelRequest
-) -> None:
+async def test_a_return_needs_remarks(api_client: AsyncClient, seeded_trip: TravelRequest) -> None:
     """§2.3 sends it back for correction. Without remarks the employee is told only that it
     came back, which is the follow-up loop this system exists to close."""
     await _submit_ready_claim(api_client)
@@ -469,9 +457,7 @@ async def test_a_returned_claim_goes_back_to_draft_and_can_be_resubmitted(
     assert returned.status_code == 200, returned.text
     assert returned.json()["claim_status"] == "draft"
 
-    employee_inbox = (
-        await api_client.get("/api/v1/notifications", headers=_as(CLAIMANT))
-    ).json()
+    employee_inbox = (await api_client.get("/api/v1/notifications", headers=_as(CLAIMANT))).json()
     assert employee_inbox["items"][0]["kind"] == "claim_returned"
     assert "hotel folio" in employee_inbox["items"][0]["body"]
 
@@ -485,9 +471,7 @@ async def test_a_returned_claim_goes_back_to_draft_and_can_be_resubmitted(
     )
     assert upload.status_code == 201, upload.text
 
-    resubmitted = await api_client.post(
-        f"/api/v1/trips/{TRQ}/claim/submit", headers=_as(CLAIMANT)
-    )
+    resubmitted = await api_client.post(f"/api/v1/trips/{TRQ}/claim/submit", headers=_as(CLAIMANT))
     assert resubmitted.status_code in (200, 422)
 
 
@@ -525,16 +509,12 @@ async def test_a_return_does_not_erase_what_an_approver_already_decided(
     )
     assert returned.json()["claim_status"] == "draft"
 
-    decided = (
-        await api_client.get("/api/v1/approvals?scope=acted", headers=_as(MANAGER))
-    ).json()
+    decided = (await api_client.get("/api/v1/approvals?scope=acted", headers=_as(MANAGER))).json()
     assert [item["trq_id"] for item in decided] == [TRQ]
     assert decided[0]["decision"] == "approved"
 
     # And it is no longer waiting on him: the claim is back with the employee.
-    pending = (
-        await api_client.get("/api/v1/approvals?scope=pending", headers=_as(MANAGER))
-    ).json()
+    pending = (await api_client.get("/api/v1/approvals?scope=pending", headers=_as(MANAGER))).json()
     assert pending == []
 
 

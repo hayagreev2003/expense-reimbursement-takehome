@@ -158,9 +158,7 @@ export function ClaimReview({ trqId, readOnly = false }: { trqId: string; readOn
                 {submit.isPending ? 'Submitting…' : 'Submit claim'}
               </Button>
               {submit.error && (
-                <p className="text-sm text-rose-700">
-                  {(submit.error as ApiError).userMessage}
-                </p>
+                <p className="text-sm text-rose-700">{(submit.error as ApiError).userMessage}</p>
               )}
             </div>
           )}

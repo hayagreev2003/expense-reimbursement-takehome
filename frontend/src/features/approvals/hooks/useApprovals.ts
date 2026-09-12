@@ -1,7 +1,7 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/store/session';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchQueue, recordDecision, type DecisionVerb } from '../api/approvals';
 
 export function useApprovalQueue(scope: 'pending' | 'acted') {

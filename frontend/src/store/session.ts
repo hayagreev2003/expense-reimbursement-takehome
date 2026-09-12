@@ -1,7 +1,7 @@
 'use client';
 
-import { queryClient } from '@/app/providers';
 import { readStoredIdentity, setRequestIdentity } from '@/api/identity';
+import { queryClient } from '@/app/providers';
 import { create } from 'zustand';
 
 /**

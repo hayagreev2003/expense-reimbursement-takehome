@@ -167,8 +167,7 @@ async def notify_decided(
         kind=kind,
         title=f"{trq_id} {verb} by {actor.name}",
         body=(
-            f"{actor.name} ({actor.designation}) {verb} your claim for {trq_id}."
-            f"{remark_text}{tail}"
+            f"{actor.name} ({actor.designation}) {verb} your claim for {trq_id}.{remark_text}{tail}"
         ),
         trq_id=trq_id,
         claim_id=claim.id,

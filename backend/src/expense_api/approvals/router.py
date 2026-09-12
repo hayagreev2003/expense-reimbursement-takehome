@@ -52,9 +52,7 @@ Session = Annotated[AsyncSession, Depends(get_async_session)]
 Scope = Literal["pending", "acted"]
 
 
-@router.get(
-    "/approvals", response_model=list[ApprovalQueueItemResponse], tags=["approvals"]
-)
+@router.get("/approvals", response_model=list[ApprovalQueueItemResponse], tags=["approvals"])
 async def approval_queue(
     session: Session,
     user: AdminUser,
@@ -246,9 +244,7 @@ async def _claims_for(
                 .join(ApprovalStep, ApprovalStep.claim_id == SettlementClaim.id)
                 .where(ApprovalStep.approver_employee_id == user.id)
                 .options(
-                    selectinload(SettlementClaim.approval_steps).selectinload(
-                        ApprovalStep.approver
-                    )
+                    selectinload(SettlementClaim.approval_steps).selectinload(ApprovalStep.approver)
                 )
                 .distinct()
             )

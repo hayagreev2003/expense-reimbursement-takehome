@@ -1,12 +1,11 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
 import { useSession } from '@/store/session';
+import { useQuery } from '@tanstack/react-query';
 import { fetchEmployees, fetchMe } from '../api/session';
 
 /** The directory that fills the profile picker. Unauthenticated by design - it is the way in. */
-export const useEmployees = () =>
-  useQuery({ queryKey: ['employees'], queryFn: fetchEmployees });
+export const useEmployees = () => useQuery({ queryKey: ['employees'], queryFn: fetchEmployees });
 
 /**
  * The signed-in person, as the *server* sees them. The profile comes from here and nowhere

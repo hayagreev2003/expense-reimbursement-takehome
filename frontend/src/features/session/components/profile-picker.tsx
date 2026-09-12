@@ -82,9 +82,7 @@ export function ProfilePicker() {
             >
               <span>
                 <span className="block font-medium">{person.name}</span>
-                <span className="text-muted-foreground block text-xs">
-                  {person.designation}
-                </span>
+                <span className="text-muted-foreground block text-xs">{person.designation}</span>
               </span>
               <Badge variant={APPROVER_ROLES.includes(person.role) ? 'secondary' : 'outline'}>
                 {person.role}

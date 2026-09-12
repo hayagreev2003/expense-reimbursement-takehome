@@ -236,9 +236,7 @@ def _with_tax_shares(result: ExtractionResult) -> list[tuple[ExtractedItem, Deci
     return list(zip(items, shares, strict=True))
 
 
-def _locate(
-    document: EvidenceDocument, emails_dir: Path, receipts_dir: Path
-) -> tuple[Path, Path]:
+def _locate(document: EvidenceDocument, emails_dir: Path, receipts_dir: Path) -> tuple[Path, Path]:
     """Where this document's message and its attachments actually are.
 
     Pack evidence lives in the pack's two directories. An employee upload lives beside its own

@@ -1,7 +1,7 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/store/session';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchNotifications, markAllRead, markRead } from '../api/notifications';
 
 /**

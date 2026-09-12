@@ -25,8 +25,8 @@ export function DocumentList({ trqId, editable }: { trqId: string; editable: boo
       <CardHeader>
         <CardTitle className="text-base">Evidence ({documents?.length ?? 0})</CardTitle>
         <p className="text-muted-foreground text-sm">
-          The trip inbox plus anything you added. Mailed evidence cannot be deleted — a claim
-          line is withdrawn with a reason instead.
+          The trip inbox plus anything you added. Mailed evidence cannot be deleted — a claim line
+          is withdrawn with a reason instead.
         </p>
       </CardHeader>
       <CardContent className="space-y-2">

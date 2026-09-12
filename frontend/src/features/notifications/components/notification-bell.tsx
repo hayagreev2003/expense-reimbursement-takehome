@@ -76,9 +76,7 @@ export function NotificationBell() {
 
           <div className="max-h-[420px] overflow-y-auto">
             {items.length === 0 && (
-              <p className="text-muted-foreground px-3 py-6 text-center text-sm">
-                Nothing yet.
-              </p>
+              <p className="text-muted-foreground px-3 py-6 text-center text-sm">Nothing yet.</p>
             )}
             {items.map(item => (
               <button

@@ -1,10 +1,10 @@
 'use client';
 
 import { ProfilePicker } from '@/features/session/components/profile-picker';
+import { useMe } from '@/features/session/hooks/useSessionQueries';
 import { restoreSession, useSession } from '@/store/session';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { useMe } from '@/features/session/hooks/useSessionQueries';
 
 /**
  * The way in. Two profiles, and the server decides which one you get - see
@@ -31,8 +31,8 @@ export default function Home() {
         </p>
         <h1 className="text-3xl font-semibold tracking-tight">Travel expense settlement</h1>
         <p className="text-muted-foreground max-w-2xl text-sm">
-          A trip inbox becomes a policy-checked claim, routed to the approvers its value
-          requires. Choose who you are — this stands in for signing in.
+          A trip inbox becomes a policy-checked claim, routed to the approvers its value requires.
+          Choose who you are — this stands in for signing in.
         </p>
       </div>
 

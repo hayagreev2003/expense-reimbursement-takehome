@@ -38,8 +38,8 @@ export function DecisionPanel({
       <CardHeader>
         <CardTitle className="text-base">Your decision</CardTitle>
         <p className="text-muted-foreground text-sm">
-          Returning sends it back to the employee against the same Travel Request ID (§2.3), so
-          it needs a remark saying what to correct.
+          Returning sends it back to the employee against the same Travel Request ID (§2.3), so it
+          needs a remark saying what to correct.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
