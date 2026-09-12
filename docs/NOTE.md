@@ -32,10 +32,25 @@ one against the real files, and settles the sample trip at **6,388.44 payable**.
 
 ## What I built
 
-FastAPI + Next.js, SQLite, `docker compose up`. `make check` runs 297 tests, ruff, mypy `--strict`,
+FastAPI + Next.js, SQLite, `docker compose up`. `make check` runs 335 tests, ruff, mypy `--strict`,
 eslint, `tsc` and vitest.
 
+**Two profiles, one workflow.** An employee uploads bills, sees what policy allows and submits;
+the claim is written down, routed by its value, and lands in exactly one approver's queue; the
+approver approves, returns or rejects it; both sides are notified at every hand-off. The second
+acceptance test, `backend/tests/test_api_workflow.py`, drives that over HTTP end to end.
+
 - **Ingestion** of `.eml` and photographed receipts, idempotent on Message-ID.
+- **Employee uploads.** A photograph of a paper bill is wrapped in a message envelope on disk and
+  goes through the same classify/extract/reconcile path as mailed evidence, so there is one
+  extraction path rather than two. Uploads land under `backend/data/uploads`, never in `pack/`.
+- **Submission freezes the claim.** Up to submission the claim is computed live from the
+  evidence; submitting writes the lines, the policy decisions behind them and the resolved chain
+  to rows. An approver has to see the figures that were submitted to them, and a recomputation
+  is a different number the moment anything behind it moves.
+- **Notifications.** Every transition writes an addressed, separately-read row to the person who
+  now has to act and the person who was waiting - in the same transaction as the state change,
+  so a claim cannot move without someone being told.
 - **A policy engine** of rules registered against clause citations, evaluated against an
   effective-dated policy version. Every disallowance names the clause that caused it.
 - **Approval routing** keyed on the claim value *after* disallowances, recomputed on every change.
@@ -44,14 +59,19 @@ eslint, `tsc` and vitest.
 
 ## What I deliberately left out
 
-- **Authentication.** A role switcher stands in for it.
+- **Authentication.** A profile picker stands in for it: the client names itself with an
+  `X-Emp-Code` header and the server resolves that to an employee. Authorisation is real -
+  scoping, routing and the approver checks are all enforced server-side and tested - but anyone
+  who can reach the API can claim to be anyone. Swapping the header for a signed session touches
+  `identity/deps.py` and nothing else.
 - **A live mailbox.** Evidence is files. The parser is not pack-specific, but nothing connects to
   IMAP or Gmail.
-- **Approver and Finance UI.** The API and the state machine are complete and tested — routing,
-  approve/reject/return, supersession on resubmit, optimistic locking, payment runs — but the
-  only screen built is the employee's claim review. That is the screen that removes the 25
-  minutes; the queues remove the follow-ups, and I ran out of road before them.
-- **Payment integration, multi-currency, international travel, notifications.**
+- **Push notifications.** The bell polls every fifteen seconds. A claim changes hands a handful
+  of times a week, so a websocket would be a connection to authenticate and reconnect for an
+  event rate of roughly zero. No email is sent - the notification exists in the application only.
+- **The payment run.** `next_payment_run()` and the PaymentRecord table exist and are tested, but
+  nothing schedules a verified claim or marks it paid: the workflow stops at *verified*.
+- **Payment integration, multi-currency, international travel.**
 
 ## Where it breaks
 
@@ -74,10 +94,17 @@ eslint, `tsc` and vitest.
 - **SQLite serialises writers.** Two approvers acting at once is prevented by an application-level
   version check, not by row-level locking. The test exercises the version check, which is the
   honest thing it proves. On Postgres the same code would be stronger.
-- **The role switcher is decorative.** It lists the employee master and clears cached queries
-  on change, but nothing downstream reads the selected role yet — there is only one screen and
-  it always shows the employee's own claim. It is scaffolding for the queues, not a working
-  permission boundary.
+- **The profile picker is not a permission boundary.** The server enforces every rule - an
+  employee's claim is 404 to anyone else, an approver out of turn is refused, a decision is
+  pinned to the version it was shown - but identity itself is a header the client sets.
+- **CORS has to allow the identity header explicitly.** `X-Emp-Code` is not CORS-safelisted, so
+  without it in `allow_headers` every browser request fails its preflight and the API looks
+  down while the server logs nothing. Found by clicking through it, not by a test; there is now
+  a test.
+- **A returned claim is re-evaluated, not re-shown.** Resubmission rebuilds the lines from the
+  evidence as it stands, so a claim returned after new evidence arrives comes back with new
+  figures. That is what §2.3 asks for, but the approver who returned it sees no diff of what
+  changed.
 - **Folio lines all carry the check-in date.** Amounts come from the message body, which states
   `Nights 3` but not a date per line, so laundry and in-room dining are dated 16 Jun rather than
   the 17th and 18th the image shows. It does not change this claim — the meal cap passes on any
@@ -85,7 +112,12 @@ eslint, `tsc` and vitest.
 - **Phone-width layout is unverified.** The grid stacks below `lg` and the table scrolls
   horizontally, but I could not resize the browser to check it.
 - **Withdrawn lines are per-process state.** They belong on the claim row and are not persisted
-  yet, so a restart forgets them.
+  yet, so a restart forgets them - and, worse, a claim returned after a restart loses the
+  withdrawal and blocks on the same held line again.
+- **An upload is trusted by kind.** The employee declares what a photographed bill is, because a
+  photograph carries no sender to classify on. Declaring a hotel folio as a cab receipt selects
+  the wrong parser; the reconciliation guard catches an unbalanced result but not a confidently
+  wrong one.
 - **The Tier 2 list is a guess**, as above. On a trip to a city nobody has classified, the system
   applies the most conservative limit and says so, which is defensible but will occasionally be
   wrong in the employee's disfavour.

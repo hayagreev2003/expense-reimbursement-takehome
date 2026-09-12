@@ -63,9 +63,13 @@ backend/src/expense_api/     FastAPI service, installed package (not a root main
   config/                    settings singleton, logging
   db/                        SQLAlchemy models, engine, session dependency
   handlers/                  global exception handlers
-  evidence/                  ingest, classify, extractors, dedup, reconcile
+  identity/                  who the caller is, and which of the two profiles they get
+  evidence/                  ingest, classify, extractors, dedup, reconcile, uploads
   policy/                    versioned parameters + rule registry
-  claims/  approvals/  finance/  export/  seed/
+  claims/                    pipeline (computed draft), materialise (rows at submit), router
+  approvals/                 routing, decision service, approver queue router
+  notifications/             addressed messages, one row per recipient
+  finance/  export/  seed/
 backend/tests/               flat, test_<subject>.py
 frontend/src/
   app/                       App Router, route groups per role
@@ -74,6 +78,25 @@ frontend/src/
   components/ui/             shadcn primitives
 pack/                        READ-ONLY specification input
 ```
+
+## Profiles and identity
+
+Two profiles, both derived from `employee.role` rather than stored separately: **employee**
+(submits, uploads, sees only their own trips) and **admin** (every approver role plus Finance;
+sees only what has been routed to them).
+
+The caller names themselves with an `X-Emp-Code` header, resolved in `identity/deps.py`. That
+stands in for authentication and is the only thing standing in for it - authorisation is real
+and enforced per route. When a session arrives, that module changes and nothing else does.
+
+Claim state has two phases and the distinction matters:
+
+- **Draft** - computed live from the evidence on every read, so an uploaded bill shows up
+  immediately and there is no second copy of the figures to drift.
+- **Submitted** - written to rows by `claims/materialise.py`, and served from them. An approver
+  must see the figures that were submitted to them; a recomputation is a different number the
+  moment anything behind it moves. Uploads and withdrawals are refused (409) until a return
+  puts the claim back in draft.
 
 ## Conventions
 
@@ -104,6 +127,13 @@ pack/                        READ-ONLY specification input
 - `ApiError.userMessage` is safe to render. `detail` and `status` are for logging only.
 
 ## Gotchas worth knowing before you lose an hour
+
+**Test isolation needed a SQLite fix.** The `db_session` fixture promises that anything written
+in a test disappears, but the sqlite3 driver opens its own implicit transaction and commits
+around statements it treats as DDL, which silently defeated the outer transaction - a route that
+called `session.commit()` wrote for real and leaked into every later test. `tests/conftest.py`
+now takes transaction control off the driver and issues `BEGIN` itself. Do not remove it; the
+symptom is a test that passes alone and fails in the suite.
 
 **RTK intercepts `eslint`.** A bare `npx eslint` returns
 `ESLint output (JSON parse failed: EOF while parsing a value at line 1 column 0)` and exit 2.
