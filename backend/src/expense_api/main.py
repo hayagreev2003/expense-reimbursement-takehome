@@ -66,7 +66,12 @@ def create_app() -> FastAPI:
         # nothing else. X-Emp-Code is not one of them, so without this every browser request
         # fails its preflight with "does not have HTTP ok status" - a 400 from the middleware
         # that never reaches a route, and looks from the client like the API is down.
-        allow_headers=["Content-Type", "X-Emp-Code"],
+        #
+        # Every custom header the client can send belongs here, including ones it sends only
+        # sometimes. X-Demo-Token is omitted by the client when no token is configured, so a
+        # missing entry is invisible in development and breaks only where a token exists -
+        # which is the deployed demo, and nowhere else.
+        allow_headers=["Content-Type", "X-Emp-Code", "X-Demo-Token"],
         # An explicit list, never ["*"]: browsers ignore a wildcard Access-Control-Expose-Headers
         # on credentialed requests, and the header reads as null in client JS.
         expose_headers=["Content-Disposition"],

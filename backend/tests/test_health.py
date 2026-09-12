@@ -88,6 +88,28 @@ async def test_preflight_allows_the_identity_header(client: AsyncClient) -> None
 
 
 @pytest.mark.asyncio
+async def test_preflight_allows_the_demo_reset_token_header(client: AsyncClient) -> None:
+    """The client sends X-Demo-Token only when a token is configured.
+
+    So a missing allow_headers entry is invisible in development, where there is no token, and
+    breaks only where one exists - the deployed demo. The browser blocks the request before it
+    is sent and the client reports it as "could not reach the server", which points at the
+    network rather than at this list.
+    """
+    response = await client.options(
+        "/api/v1/demo/reset",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type,x-demo-token",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "x-demo-token" in response.headers["access-control-allow-headers"].lower()
+
+
+@pytest.mark.asyncio
 async def test_unknown_origin_is_not_allowed(client: AsyncClient) -> None:
     response = await client.options(
         "/api/v1/health",
