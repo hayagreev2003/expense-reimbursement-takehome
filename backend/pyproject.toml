@@ -36,6 +36,9 @@ dev = [
     "ruff~=0.16.7",
     "mypy~=2.3.1",
     "types-pyyaml~=6.0.12",
+    # Real stubs rather than an ignore: the export module writes into a spreadsheet by cell
+    # reference, which is exactly the code that benefits from being type checked.
+    "types-openpyxl~=3.1.5",
     # Drives the FastAPI ASGI test client.
     "httpx~=0.28.1",
 ]

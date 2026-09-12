@@ -1,7 +1,7 @@
 ---
 title: "feat: Travel Expense Reimbursement System (Nortex)"
 type: feat
-status: active
+status: completed
 date: 2026-09-11
 origin: docs/brainstorms/2026-09-11-travel-expense-settlement-requirements.md
 ---
@@ -596,7 +596,7 @@ Submission is blocked while any line is `held` or lacks a proof reference. `Draf
 
 ---
 
-- [ ] **Unit 9: Form export, the acceptance suite, and the written deliverables**
+- [x] **Unit 9: Form export, the acceptance suite, and the written deliverables**
 
 **Goal:** A finalised claim exports in the shape of the existing settlement form, the thirteen traps are locked down by test, and the note and recording are ready.
 
