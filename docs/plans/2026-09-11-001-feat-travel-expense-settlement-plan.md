@@ -354,7 +354,7 @@ Submission is blocked while any line is `held` or lacks a proof reference. `Draf
 
 ---
 
-- [ ] **Unit 3: Evidence ingestion and classification**
+- [x] **Unit 3: Evidence ingestion and classification**
 
 **Goal:** The fifteen `.eml` files and two images become `EvidenceDocument` rows correctly typed, with noise and non-receipts identified before any extraction is attempted.
 
