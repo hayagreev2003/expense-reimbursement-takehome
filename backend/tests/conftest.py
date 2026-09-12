@@ -19,12 +19,17 @@ os.environ.setdefault("LOG_LEVEL", "WARNING")
 # and no test should be able to reach it, however a fixture is later mis-wired.
 _TEST_DB_DIR = Path(tempfile.mkdtemp(prefix="expense-test-"))
 os.environ.setdefault("DATABASE_PATH", str(_TEST_DB_DIR / "expense_test.db"))
+# Uploads land on disk. Pointed at the same throwaway directory so a test run cannot write into
+# backend/data/uploads - and, more importantly, so it can never write into the read-only pack.
+os.environ.setdefault("UPLOAD_DIR", str(_TEST_DB_DIR / "uploads"))
 
 from collections.abc import AsyncIterator  # noqa: E402
+from typing import Any  # noqa: E402
 
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
+from sqlalchemy import event  # noqa: E402
 from sqlalchemy.ext.asyncio import (  # noqa: E402
     AsyncConnection,
     AsyncSession,
@@ -69,10 +74,35 @@ def migrated_database(_never_touch_the_development_database: None) -> Path:
     return settings.database_path
 
 
+def _make_savepoint_capable_engine():  # type: ignore[no-untyped-def]
+    """An engine on which SAVEPOINT actually works.
+
+    The sqlite3 driver (and aiosqlite on top of it) opens its own implicit transaction and
+    silently commits before any statement it considers DDL, which defeats an outer transaction
+    a test is holding open: a `session.commit()` inside a route would be written for real and
+    survive the rollback. The documented fix is to take transaction control away from the
+    driver and issue BEGIN ourselves.
+
+    Without this the isolation the fixtures below promise is not real, and a test that commits
+    leaks its rows into every test that runs after it.
+    """
+    engine = create_async_engine(settings.database_url)
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _disable_driver_transactions(dbapi_connection: Any, _record: Any) -> None:
+        dbapi_connection.isolation_level = None
+
+    @event.listens_for(engine.sync_engine, "begin")
+    def _emit_begin(connection: Any) -> None:
+        connection.exec_driver_sql("BEGIN")
+
+    return engine
+
+
 @pytest_asyncio.fixture
 async def db_connection(migrated_database: Path) -> AsyncIterator[AsyncConnection]:
     """A connection inside a transaction that is always rolled back."""
-    engine = create_async_engine(settings.database_url)
+    engine = _make_savepoint_capable_engine()
     async with engine.connect() as connection:
         transaction = await connection.begin()
         try:
@@ -166,3 +196,36 @@ async def client(app) -> AsyncIterator[AsyncClient]:  # type: ignore[no-untyped-
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
         yield ac
+
+
+@pytest_asyncio.fixture
+async def api_client(app, db_session: AsyncSession) -> AsyncIterator[AsyncClient]:  # type: ignore[no-untyped-def]
+    """A client whose routes run inside the test's rolled-back session.
+
+    Without the override every request would open its own connection against the test database
+    file and commit for real, so one test's claim would still be pending approval in the next.
+    """
+    from expense_api.db.database import get_async_session
+
+    async def _session_override() -> AsyncIterator[AsyncSession]:
+        yield db_session
+
+    app.dependency_overrides[get_async_session] = _session_override
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
+            yield ac
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def seeded_trip(db_session: AsyncSession):  # type: ignore[no-untyped-def]
+    """The pack's employees, policy and anchor trip, inside the test transaction."""
+    from expense_api.seed.employees import seed_employees
+    from expense_api.seed.policy import seed_policy_versions
+    from expense_api.seed.trip import seed_anchor_trip
+
+    await seed_employees(db_session, settings.pack_dir / "employee_master.csv")
+    await seed_policy_versions(db_session)
+    return await seed_anchor_trip(db_session)
