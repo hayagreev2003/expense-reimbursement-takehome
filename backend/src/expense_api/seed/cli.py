@@ -13,6 +13,7 @@ from expense_api.config.settings import settings
 from expense_api.db.database import async_session_maker
 from expense_api.seed.employees import seed_employees
 from expense_api.seed.policy import seed_policy_versions
+from expense_api.seed.trip import seed_anchor_trip
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ async def run_seed() -> tuple[int, int]:
     async with async_session_maker() as session:
         employees = await seed_employees(session, settings.pack_dir / "employee_master.csv")
         policies = await seed_policy_versions(session)
+        await seed_anchor_trip(session)
         await session.commit()
     return employees, policies
 
