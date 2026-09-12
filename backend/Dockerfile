@@ -15,9 +15,12 @@ COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-install-project --no-dev
 
 COPY src ./src
+# The image has to carry the migrations: the entrypoint runs `alembic upgrade head` before
+# uvicorn, and without these the container starts against an empty database and every query
+# fails with "no such table".
+COPY alembic.ini ./
+COPY alembic ./alembic
 COPY docker-entrypoint.sh ./
-# Alembic config and revisions are copied here once they exist. The entrypoint already guards
-# on alembic.ini being present, so the image is correct either way.
 RUN chmod +x docker-entrypoint.sh && uv sync --frozen --no-dev
 
 ENV PATH="/app/.venv/bin:$PATH"

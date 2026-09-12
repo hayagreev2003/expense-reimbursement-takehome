@@ -555,7 +555,7 @@ Submission is blocked while any line is `held` or lacks a proof reference. `Draf
 
 ---
 
-- [ ] **Unit 8: API surface, OpenAPI codegen, and the frontend**
+- [x] **Unit 8: API surface, OpenAPI codegen, and the frontend**
 
 **Goal:** All three roles can drive the full loop through the UI, with the claim review screen showing extracted values beside their source documents.
 

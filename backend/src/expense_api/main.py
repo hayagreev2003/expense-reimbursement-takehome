@@ -9,6 +9,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from expense_api.claims.router import router as claims_router
 from expense_api.config.logging_config import setup_logging
 from expense_api.config.settings import settings
 from expense_api.handlers.errors import register_exception_handlers
@@ -40,6 +41,9 @@ def create_app() -> FastAPI:
     )
 
     register_exception_handlers(app)
+
+    # Prefixes are applied here and only here, so the whole URL map reads in one place.
+    app.include_router(claims_router, prefix="/api/v1")
 
     @app.get("/api/v1/health", tags=["meta"])
     async def health() -> dict[str, str]:
