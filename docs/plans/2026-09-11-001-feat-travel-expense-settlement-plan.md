@@ -513,7 +513,7 @@ Submission is blocked while any line is `held` or lacks a proof reference. `Draf
 
 ---
 
-- [ ] **Unit 7: Claim lifecycle, approval routing, Finance and payment**
+- [x] **Unit 7: Claim lifecycle, approval routing, Finance and payment**
 
 **Goal:** A claim submits, routes by its post-disallowance value, supports return-with-remarks, reaches Finance verification and a payment run, and records everything.
 
