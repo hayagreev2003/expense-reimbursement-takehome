@@ -1,0 +1,219 @@
+{
+  "_comment": [
+    "Golden extraction fixture, written by hand from the source documents in pack/ before any",
+    "parser existed. That order matters: written afterwards it would only record whatever the",
+    "parsers happened to produce, which proves nothing.",
+    "",
+    "Amounts are strings so they compare as exact Decimals. No float appears in the money path.",
+    "",
+    "Only documents that produce claim lines appear here. The approval thread, the advance",
+    "notice and the hotel voucher are context; the promotional mail and the payment-failure",
+    "notice are terminal at classification and never reach extraction at all."
+  ],
+  "04_flight_eticket.eml": {
+    "doc_kind": "flight_booking",
+    "stated_total": "10556.00",
+    "line_items": [
+      {
+        "merchant": "IndiGo",
+        "txn_date": "2026-06-16",
+        "description": "6E-6284 PNQ-BLR",
+        "gross_amount": "5016.00",
+        "tax_amount": "896.00",
+        "payment_method": "Corporate Card ending 4417 (Nortex Industries Ltd)",
+        "payer_name": "MR CHAITANYA REDDY",
+        "bill_no": "NF9119735"
+      },
+      {
+        "merchant": "IndiGo",
+        "txn_date": "2026-06-20",
+        "description": "6E-6491 BLR-PNQ",
+        "gross_amount": "5540.00",
+        "tax_amount": null,
+        "payment_method": "Corporate Card ending 4417 (Nortex Industries Ltd)",
+        "payer_name": "MR CHAITANYA REDDY",
+        "bill_no": "NF9119735"
+      }
+    ]
+  },
+  "06_uber_receipt_1.eml": {
+    "doc_kind": "cab_receipt",
+    "stated_total": "1415.02",
+    "line_items": [
+      {
+        "merchant": "Uber",
+        "txn_date": "2026-06-16",
+        "description": "Baner, Pune to Pune International Airport (PNQ)",
+        "gross_amount": "1415.02",
+        "tax_amount": "90.02",
+        "payment_method": "Personal - HDFC Credit Card ****2288",
+        "payer_name": "Chaitanya",
+        "bill_no": null
+      }
+    ]
+  },
+  "07_uber_receipt_2.eml": {
+    "doc_kind": "cab_receipt",
+    "stated_total": "743.00",
+    "line_items": [
+      {
+        "merchant": "Uber",
+        "txn_date": "2026-06-16",
+        "description": "Kempegowda International Airport (BLR) to Keys Prime Hotel, Whitefield",
+        "gross_amount": "743.00",
+        "tax_amount": null,
+        "payment_method": "Personal - HDFC Credit Card ****2288",
+        "payer_name": "Chaitanya",
+        "bill_no": null
+      }
+    ]
+  },
+  "09_uber_receipt_3.eml": {
+    "doc_kind": "cab_receipt",
+    "stated_total": "172.00",
+    "line_items": [
+      {
+        "merchant": "Uber",
+        "txn_date": "2026-06-17",
+        "description": "Vertex Technologies, Whitefield to Keys Prime Hotel, Whitefield",
+        "gross_amount": "172.00",
+        "tax_amount": null,
+        "payment_method": "Personal - HDFC Credit Card ****2288",
+        "payer_name": "Chaitanya",
+        "bill_no": null
+      }
+    ]
+  },
+  "10_uber_receipt_3_resend.eml": {
+    "_comment": "Byte-identical trip to 09. Extracted, then suppressed by dedup - not skipped here.",
+    "doc_kind": "cab_receipt",
+    "stated_total": "172.00",
+    "line_items": [
+      {
+        "merchant": "Uber",
+        "txn_date": "2026-06-17",
+        "description": "Vertex Technologies, Whitefield to Keys Prime Hotel, Whitefield",
+        "gross_amount": "172.00",
+        "tax_amount": null,
+        "payment_method": "Personal - HDFC Credit Card ****2288",
+        "payer_name": "Chaitanya",
+        "bill_no": null
+      }
+    ]
+  },
+  "15_return_cab.eml": {
+    "doc_kind": "cab_receipt",
+    "stated_total": "1229.02",
+    "line_items": [
+      {
+        "merchant": "Uber",
+        "txn_date": "2026-06-20",
+        "description": "Pune International Airport (PNQ) to Baner, Pune",
+        "gross_amount": "1229.02",
+        "tax_amount": null,
+        "payment_method": "Personal - HDFC Credit Card ****2288",
+        "payer_name": "Chaitanya",
+        "bill_no": null
+      }
+    ]
+  },
+  "13_colleague_forward.eml": {
+    "_comment": "Deepa's cab, from a different trip in May. Extracted so the rejection can name a figure.",
+    "doc_kind": "third_party_forward",
+    "stated_total": "640.00",
+    "line_items": [
+      {
+        "merchant": "Uber",
+        "txn_date": "2026-05-12",
+        "description": "Guindy, Chennai to Chennai International Airport (MAA)",
+        "gross_amount": "640.00",
+        "tax_amount": null,
+        "payment_method": null,
+        "payer_name": "Deepa",
+        "bill_no": null
+      }
+    ]
+  },
+  "11_dinner_bill.eml": {
+    "_comment": "Image receipt. Sub Total 2050.00 + CGST 51.25 + SGST 51.25 + service charge 102.50.",
+    "doc_kind": "restaurant_bill",
+    "stated_subtotal": "2050.00",
+    "stated_total": "2255.00",
+    "covers": 4,
+    "line_items": [
+      {
+        "merchant": "Spice Terrace",
+        "txn_date": "2026-06-18",
+        "description": "Dinner, 4 covers",
+        "gross_amount": "2255.00",
+        "tax_amount": "102.50",
+        "payment_method": "CARD ****2288",
+        "payer_name": null,
+        "bill_no": "4471"
+      }
+    ]
+  },
+  "12_hotel_invoice.eml": {
+    "_comment": [
+      "Four category lines, not one 21,504 expense: policy treats each differently.",
+      "",
+      "Amounts come from the email body, which carries the folio as structured text. The",
+      "image is the fallback for a bill that arrives as a photograph alone, and it also",
+      "cross-checks this. That ordering matters here specifically: the fold drawn across",
+      "hotel_invoice_1188.png destroys the second room charge under OCR, so the image alone",
+      "yields 13,450 against a stated 19,200. See test_ocr_of_the_folio_loses_a_room_charge.",
+      "",
+      "Room charges stay aggregated with a nights count rather than being split into three",
+      "invented per-night rows. The \u00a73.1 per-night limit divides by nights, so nothing is",
+      "lost, and no amount is inferred from a line OCR could not read."
+    ],
+    "doc_kind": "hotel_invoice",
+    "stated_subtotal": "19200.00",
+    "stated_tax": "2304.00",
+    "stated_total": "21504.00",
+    "nights": 3,
+    "line_items": [
+      {
+        "merchant": "Keys Prime Whitefield",
+        "txn_date": "2026-06-16",
+        "description": "Room charges",
+        "gross_amount": "17250.00",
+        "tax_amount": null,
+        "payment_method": "Guest, HDFC Credit Card ****2288",
+        "payer_name": "Chaitanya Reddy",
+        "bill_no": "KPW/26-27/1188",
+        "nights": 3
+      },
+      {
+        "merchant": "Keys Prime Whitefield",
+        "txn_date": "2026-06-16",
+        "description": "Laundry",
+        "gross_amount": "450.00",
+        "tax_amount": null,
+        "payment_method": "Guest, HDFC Credit Card ****2288",
+        "payer_name": "Chaitanya Reddy",
+        "bill_no": "KPW/26-27/1188"
+      },
+      {
+        "merchant": "Keys Prime Whitefield",
+        "txn_date": "2026-06-16",
+        "description": "Mini bar",
+        "gross_amount": "380.00",
+        "tax_amount": null,
+        "payment_method": "Guest, HDFC Credit Card ****2288",
+        "payer_name": "Chaitanya Reddy",
+        "bill_no": "KPW/26-27/1188"
+      },
+      {
+        "merchant": "Keys Prime Whitefield",
+        "txn_date": "2026-06-16",
+        "description": "In-room dining",
+        "gross_amount": "1120.00",
+        "tax_amount": null,
+        "payment_method": "Guest, HDFC Credit Card ****2288",
+        "payer_name": "Chaitanya Reddy",
+        "bill_no": "KPW/26-27/1188"
+      }
+    ]
+  }
+}

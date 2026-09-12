@@ -390,7 +390,7 @@ Submission is blocked while any line is `held` or lacks a proof reference. `Draf
 
 ---
 
-- [ ] **Unit 4: Extraction adapters, OCR, and the reconciliation guard**
+- [x] **Unit 4: Extraction adapters, OCR, and the reconciliation guard**
 
 **Goal:** Typed line items with per-field confidence come out of both text and image evidence, and a bill whose lines do not sum to its own stated subtotal is caught rather than quietly understated.
 
@@ -416,7 +416,7 @@ Submission is blocked while any line is `held` or lacks a proof reference. `Draf
 **Execution note:** Test-first. `expected_extraction.json` is the golden fixture for the pack; write it from the source documents by hand before the parsers exist, so the parsers are written against the truth rather than the fixture being written to match whatever the parsers produce.
 
 **Test scenarios:**
-- The hotel folio decomposes to six line items summing to the stated 19,200 subtotal.
+- The hotel folio decomposes to four category line items summing to the stated 19,200 subtotal. **Revised during Unit 4 from the planned six.** The message body carries the folio as structured text and states `Room charges 17,250.00` as one figure with `Nights 3`; splitting that into three per-night rows would mean inventing amounts for a line the image's fold makes unreadable. Room charges instead carry a `nights` count and the §3.1 per-night limit divides by it, which reaches an identical policy outcome (5,750/night against a 6,000 limit) without inferring anything.
 - **With the raw OCR output of `hotel_invoice_1188.png`, extraction produces 13,450 and the reconciliation guard raises needs-input naming the 5,750 shortfall.** This is trap 13 and it must fail loudly.
 - `5.750.00` parses to 5750.00; `1,415.02` parses to 1415.02; `2,255.00` parses to 2255.00.
 - The dinner bill extracts total 2,255.00, covers 4, bill number 4471 and date 18-Jun-2026, and the garbage OCR line where the fold crosses does not become a line item.

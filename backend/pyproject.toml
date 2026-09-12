@@ -78,5 +78,7 @@ strict = true
 plugins = []
 
 [[tool.mypy.overrides]]
-module = ["pytesseract.*"]
+# pytesseract ships no stubs. anthropic is an optional extra, deliberately not installed by
+# default - the LLM adapter is a seam, and the rule-based path must not depend on it.
+module = ["pytesseract.*", "anthropic.*"]
 ignore_missing_imports = true
