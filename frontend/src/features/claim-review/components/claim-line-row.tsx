@@ -28,10 +28,13 @@ export function ClaimLineRow({
   line,
   onWithdraw,
   withdrawing,
+  editable = true,
 }: {
   line: ClaimLine;
   onWithdraw: (description: string) => void;
   withdrawing: boolean;
+  /** An approver sees every line and every reason, and changes none of them. */
+  editable?: boolean;
 }) {
   // Every reason a rule gave, so an approver never has to ask why a figure changed.
   const notes = line.decisions.filter(d =>
@@ -87,7 +90,7 @@ export function ClaimLineRow({
           <Badge variant="outline" className={STATUS_STYLES[line.status] ?? ''}>
             {STATUS_LABELS[line.status] ?? line.status}
           </Badge>
-          {line.status === 'held' && (
+          {editable && line.status === 'held' && (
             <div className="mt-2">
               <Button
                 size="sm"

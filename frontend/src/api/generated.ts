@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/v1/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Me */
+        get: operations["me_api_v1_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/employees": {
         parameters: {
             query?: never;
@@ -13,7 +30,10 @@ export interface paths {
         };
         /**
          * List Employees
-         * @description Everyone in the employee master. Drives the role switcher that stands in for login.
+         * @description Everyone in the employee master. Drives the profile picker that stands in for login.
+         *
+         *     Deliberately unauthenticated: it is the only way in, and it exposes nothing an internal
+         *     directory would not - no claims, no amounts, no evidence.
          */
         get: operations["list_employees_api_v1_employees_get"];
         put?: never;
@@ -31,7 +51,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Trips */
+        /**
+         * List Trips
+         * @description An employee's own trips. For an approver, the trips they have been routed.
+         */
         get: operations["list_trips_api_v1_trips_get"];
         put?: never;
         post?: never;
@@ -48,11 +71,70 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Claim */
+        /**
+         * Get Claim
+         * @description The claim as it stands.
+         *
+         *     A draft is evaluated live from the evidence, so an uploaded bill shows up immediately. Once
+         *     submitted, the persisted rows are served instead - an approver must see the figures that
+         *     were submitted to them, not a recomputation that moves when anything behind it moves.
+         */
         get: operations["get_claim_api_v1_trips__trq_id__claim_get"];
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trips/{trq_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Documents
+         * @description Everything attached to this trip: the mailed evidence and anything uploaded.
+         */
+        get: operations["list_documents_api_v1_trips__trq_id__documents_get"];
+        put?: never;
+        /**
+         * Upload Document
+         * @description Add a bill to the claim.
+         *
+         *     Only the claimant, and only while the claim is still a draft. Evidence that arrives after
+         *     an approver has seen the claim would change what they approved, so a submitted claim has to
+         *     be returned before it can take anything new.
+         */
+        post: operations["upload_document_api_v1_trips__trq_id__documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trips/{trq_id}/documents/{external_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Document
+         * @description Remove something the employee uploaded by mistake.
+         *
+         *     Only their own uploads, and only while the claim is a draft. Mailed evidence from the pack
+         *     is not removable at all: an inbox is a record of what arrived, and letting a claimant delete
+         *     an inconvenient receipt is precisely the failure this system exists to prevent.
+         */
+        delete: operations["remove_document_api_v1_trips__trq_id__documents__external_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -90,8 +172,106 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit Claim */
+        /**
+         * Submit Claim
+         * @description Freeze the draft into rows, route it, and tell the first approver it is there.
+         */
         post: operations["submit_claim_api_v1_trips__trq_id__claim_submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Approval Queue
+         * @description What is on this approver's desk, or what they have already decided.
+         *
+         *     `pending` is deliberately narrower than "every step assigned to me that is undecided": a
+         *     step three levels up is assigned and undecided from the day the claim is submitted, and
+         *     showing it would put the same claim in four queues at once.
+         */
+        get: operations["approval_queue_api_v1_approvals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trips/{trq_id}/claim/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide
+         * @description Approve, reject or return the claim's current step, and tell everyone it moved.
+         */
+        post: operations["decide_api_v1_trips__trq_id__claim_decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Notifications */
+        get: operations["list_notifications_api_v1_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/{external_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Read */
+        post: operations["mark_read_api_v1_notifications__external_id__read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark All Read */
+        post: operations["mark_all_read_api_v1_notifications_read_all_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -119,6 +299,52 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ApprovalQueueItemResponse
+         * @description One claim waiting on the signed-in approver.
+         */
+        ApprovalQueueItemResponse: {
+            /** Trq Id */
+            trq_id: string;
+            /** Claim External Id */
+            claim_external_id: string;
+            /** Employee Name */
+            employee_name: string;
+            /** Employee Code */
+            employee_code: string;
+            /** Destination */
+            destination: string;
+            /**
+             * From Date
+             * Format: date
+             */
+            from_date: string;
+            /**
+             * To Date
+             * Format: date
+             */
+            to_date: string;
+            /** Status */
+            status: string;
+            /** Payable */
+            payable: string;
+            /** Net Reimbursable */
+            net_reimbursable: string;
+            /** Disallowed Total */
+            disallowed_total: string;
+            /** Version */
+            version: number;
+            /** Sequence */
+            sequence: number;
+            /** Role */
+            role: string;
+            /** Decision */
+            decision: string;
+            /** Submitted At */
+            submitted_at: string | null;
+            /** Remarks */
+            remarks?: string | null;
+        };
         /** ApprovalStepResponse */
         ApprovalStepResponse: {
             /** Sequence */
@@ -140,6 +366,18 @@ export interface components {
             decided_at?: string | null;
             /** Remarks */
             remarks?: string | null;
+        };
+        /** Body_upload_document_api_v1_trips__trq_id__documents_post */
+        Body_upload_document_api_v1_trips__trq_id__documents_post: {
+            /**
+             * File
+             * @description A receipt image (.png/.jpg) or a mail (.eml)
+             */
+            file: string;
+            /** Doc Kind */
+            doc_kind?: string | null;
+            /** Note */
+            note?: string | null;
         };
         /** ClaimLineResponse */
         ClaimLineResponse: {
@@ -217,6 +455,47 @@ export interface components {
             suppressed_duplicates: components["schemas"]["SuppressedDuplicateResponse"][];
             /** Needs Input */
             needs_input: components["schemas"]["SetAsideDocumentResponse"][];
+            /** Version */
+            version?: number | null;
+            /** Submitted At */
+            submitted_at?: string | null;
+            /**
+             * Return Count
+             * @default 0
+             */
+            return_count: number;
+            /**
+             * Frozen
+             * @default false
+             */
+            frozen: boolean;
+            /**
+             * Awaiting Me
+             * @default false
+             */
+            awaiting_me: boolean;
+        };
+        /** CurrentUserResponse */
+        CurrentUserResponse: {
+            /** Emp Code */
+            emp_code: string;
+            /** Name */
+            name: string;
+            /** Email */
+            email: string;
+            /** Role */
+            role: string;
+            /** Designation */
+            designation: string;
+            /** Department */
+            department: string;
+            /**
+             * Profile
+             * @enum {string}
+             */
+            profile: "employee" | "admin";
+            /** Reporting Manager Code */
+            reporting_manager_code: string | null;
         };
         /** EmployeeResponse */
         EmployeeResponse: {
@@ -236,6 +515,37 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** MarkReadResponse */
+        MarkReadResponse: {
+            /** Unread Count */
+            unread_count: number;
+            /** Marked */
+            marked: number;
+        };
+        /** NotificationListResponse */
+        NotificationListResponse: {
+            /** Unread Count */
+            unread_count: number;
+            /** Items */
+            items: components["schemas"]["NotificationResponse"][];
+        };
+        /** NotificationResponse */
+        NotificationResponse: {
+            /** External Id */
+            external_id: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Body */
+            body: string;
+            /** Trq Id */
+            trq_id: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Read At */
+            read_at: string | null;
+        };
         /** PolicyDecisionResponse */
         PolicyDecisionResponse: {
             /** Rule Id */
@@ -248,6 +558,31 @@ export interface components {
             citation: string;
             /** Amount Effect */
             amount_effect: string;
+        };
+        /** RecordDecisionRequest */
+        RecordDecisionRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected" | "returned";
+            /** Approver Code */
+            approver_code: string;
+            /** Expected Version */
+            expected_version: number;
+            /** Remarks */
+            remarks?: string | null;
+        };
+        /** RecordDecisionResponse */
+        RecordDecisionResponse: {
+            /** Trq Id */
+            trq_id: string;
+            /** Claim Status */
+            claim_status: string;
+            /** Step Sequence */
+            step_sequence: number;
+            /** New Version */
+            new_version: number;
         };
         /**
          * SetAsideDocumentResponse
@@ -282,6 +617,14 @@ export interface components {
             trq_id: string;
             /** Status */
             status: string;
+            /** Claim External Id */
+            claim_external_id: string;
+            /** Version */
+            version: number;
+            /** Payable */
+            payable: string;
+            /** Next Approver */
+            next_approver: string | null;
             /** Chain */
             chain: components["schemas"]["ApprovalStepResponse"][];
         };
@@ -300,6 +643,8 @@ export interface components {
             trq_id: string;
             /** Employee Name */
             employee_name: string;
+            /** Employee Code */
+            employee_code: string;
             /** Destination */
             destination: string;
             /**
@@ -316,6 +661,39 @@ export interface components {
             status: string;
             /** Payable */
             payable: string;
+            /**
+             * Submission Deadline
+             * Format: date
+             */
+            submission_deadline: string;
+            /**
+             * Awaiting Me
+             * @default false
+             */
+            awaiting_me: boolean;
+        };
+        /** UploadDocumentResponse */
+        UploadDocumentResponse: {
+            document: components["schemas"]["UploadedDocumentResponse"];
+            /** Message */
+            message: string;
+        };
+        /** UploadedDocumentResponse */
+        UploadedDocumentResponse: {
+            /** External Id */
+            external_id: string;
+            /** Source Filename */
+            source_filename: string;
+            /** Doc Kind */
+            doc_kind: string;
+            /** Proof Ref */
+            proof_ref: string;
+            /** Extraction Status */
+            extraction_status: string;
+            /** Needs Input Reason */
+            needs_input_reason: string | null;
+            /** Uploaded */
+            uploaded: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -349,6 +727,37 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    me_api_v1_me_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Emp-Code"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentUserResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_employees_api_v1_employees_get: {
         parameters: {
             query?: never;
@@ -372,7 +781,9 @@ export interface operations {
     list_trips_api_v1_trips_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Emp-Code"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -387,12 +798,23 @@ export interface operations {
                     "application/json": components["schemas"]["TripSummaryResponse"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     get_claim_api_v1_trips__trq_id__claim_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Emp-Code"?: string | null;
+            };
             path: {
                 trq_id: string;
             };
@@ -420,10 +842,114 @@ export interface operations {
             };
         };
     };
+    list_documents_api_v1_trips__trq_id__documents_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Emp-Code"?: string | null;
+            };
+            path: {
+                trq_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadedDocumentResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_document_api_v1_trips__trq_id__documents_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Emp-Code"?: string | null;
+            };
+            path: {
+                trq_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_document_api_v1_trips__trq_id__documents_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadDocumentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_document_api_v1_trips__trq_id__documents__external_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Emp-Code"?: string | null;
+            };
+            path: {
+                trq_id: string;
+                external_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     withdraw_line_api_v1_trips__trq_id__claim_withdraw_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Emp-Code"?: string | null;
+            };
             path: {
                 trq_id: string;
             };
@@ -458,7 +984,9 @@ export interface operations {
     submit_claim_api_v1_trips__trq_id__claim_submit_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Emp-Code"?: string | null;
+            };
             path: {
                 trq_id: string;
             };
@@ -473,6 +1001,173 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SubmitClaimResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approval_queue_api_v1_approvals_get: {
+        parameters: {
+            query?: {
+                scope?: "pending" | "acted";
+            };
+            header?: {
+                "X-Emp-Code"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalQueueItemResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_api_v1_trips__trq_id__claim_decision_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Emp-Code"?: string | null;
+            };
+            path: {
+                trq_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordDecisionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_notifications_api_v1_notifications_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                "X-Emp-Code"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_read_api_v1_notifications__external_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Emp-Code"?: string | null;
+            };
+            path: {
+                external_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarkReadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_all_read_api_v1_notifications_read_all_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Emp-Code"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarkReadResponse"];
                 };
             };
             /** @description Validation Error */

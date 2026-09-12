@@ -19,6 +19,7 @@ export function useWithdrawLine(trqId: string) {
     onSuccess: claim => {
       client.setQueryData(['claim', trqId], claim);
       client.invalidateQueries({ queryKey: ['trips'] });
+      client.invalidateQueries({ queryKey: ['documents', trqId] });
     },
   });
 }
@@ -27,6 +28,14 @@ export function useSubmitClaim(trqId: string) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: () => submitClaim(trqId),
-    onSuccess: () => client.invalidateQueries({ queryKey: ['claim', trqId] }),
+    // Everything the submission moved, not only the claim. The trip's status is what the
+    // employee screen reads to decide whether the claim is still editable, so invalidating the
+    // claim alone leaves an upload panel on screen for a claim the server will now refuse.
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ['claim', trqId] });
+      client.invalidateQueries({ queryKey: ['trips'] });
+      client.invalidateQueries({ queryKey: ['documents', trqId] });
+      client.invalidateQueries({ queryKey: ['notifications'] });
+    },
   });
 }
