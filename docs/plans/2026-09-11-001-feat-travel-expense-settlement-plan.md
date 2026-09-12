@@ -431,7 +431,7 @@ Submission is blocked while any line is `held` or lacks a proof reference. `Draf
 
 ---
 
-- [ ] **Unit 5: Dedup, claimant attribution, and draft claim lines**
+- [x] **Unit 5: Dedup, claimant attribution, and draft claim lines**
 
 **Goal:** Extracted items become draft claim lines with duplicates collapsed, third-party expenses rejected, and `Paid By` derived from payment evidence.
 
