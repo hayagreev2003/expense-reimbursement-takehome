@@ -119,3 +119,157 @@ def test_proof_ref_names_a_specific_document() -> None:
     assert "attached mail" not in parsed.proof_ref.lower()
     # Identifies the source well enough for Finance to find it again.
     assert "12_hotel_invoice" in parsed.proof_ref
+
+
+def _mail_with_part(
+    tmp_path: Path,
+    *,
+    name: str,
+    payload: bytes,
+    maintype: str = "image",
+    subtype: str = "png",
+    filename: str | None = "invoice.png",
+    inline: bool = False,
+) -> Path:
+    """A message in the form a real mailbox produces: the bytes, not a placeholder."""
+    from email.message import EmailMessage
+    from email.utils import format_datetime
+
+    message = EmailMessage()
+    message["From"] = "Billing <billing@some-hotel.example>"
+    message["To"] = "chaitanya.reddy@nortexindustries.com"
+    message["Subject"] = "Invoice for your stay"
+    message["Date"] = format_datetime(datetime(2026, 6, 20, 9, 0))
+    message.set_content("Invoice attached. Total INR 5,750.00")
+    message.add_attachment(payload, maintype=maintype, subtype=subtype, filename=filename)
+    if inline:
+        part = list(message.iter_attachments())[0]
+        del part["Content-Disposition"]
+        part["Content-Disposition"] = "inline"
+
+    path = tmp_path / name
+    path.write_bytes(bytes(message.as_bytes()))
+    return path
+
+
+def test_a_real_mime_attachment_is_written_out(tmp_path: Path) -> None:
+    """The pack names a file on disk; a real mailbox sends the bytes.
+
+    Nothing downstream reads bytes - the OCR and LLM adapters both take a path - so a part that
+    is never written out is a receipt that silently disappears from the claim.
+    """
+    image = (RECEIPTS_DIR / "dinner_bill_18jun.png").read_bytes()
+    message = _mail_with_part(tmp_path, name="forwarded.eml", payload=image)
+
+    parsed = parse_eml(message, receipts_dir=tmp_path)
+
+    assert parsed.attachment_path is not None
+    assert parsed.attachment_path.read_bytes() == image
+    assert parsed.attachment_path.is_relative_to(tmp_path)
+    # Named after its message, so the claim's proof reference identifies both.
+    assert "forwarded" in parsed.attachment_path.name
+    assert "forwarded.eml#" in parsed.proof_ref
+
+
+def test_re_parsing_reuses_the_extracted_file(tmp_path: Path) -> None:
+    """A draft claim is recomputed on every read, so this file is parsed many times."""
+    image = (RECEIPTS_DIR / "dinner_bill_18jun.png").read_bytes()
+    message = _mail_with_part(tmp_path, name="forwarded.eml", payload=image)
+
+    first = parse_eml(message, receipts_dir=tmp_path)
+    second = parse_eml(message, receipts_dir=tmp_path)
+
+    assert first.attachment_path == second.attachment_path
+    assert len(list(tmp_path.glob("forwarded--*"))) == 1
+
+
+def test_an_attachment_is_written_where_told_not_beside_read_only_mail(tmp_path: Path) -> None:
+    """`pack/` is read-only, so mail read from it cannot have a sidecar written beside it."""
+    image = (RECEIPTS_DIR / "dinner_bill_18jun.png").read_bytes()
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    extracted = tmp_path / "extracted"
+    message = _mail_with_part(inbox, name="dropped_in.eml", payload=image)
+
+    parsed = parse_eml(message, receipts_dir=inbox, extract_dir=extracted)
+
+    assert parsed.attachment_path is not None
+    assert parsed.attachment_path.parent == extracted
+    assert not list(inbox.glob("*.png"))
+
+
+def test_an_inline_image_with_no_filename_still_becomes_evidence(tmp_path: Path) -> None:
+    """A mailed bill is routinely sent inline with a `cid:` reference, not as an attachment."""
+    image = (RECEIPTS_DIR / "dinner_bill_18jun.png").read_bytes()
+    message = _mail_with_part(
+        tmp_path, name="inline.eml", payload=image, filename=None, inline=True
+    )
+
+    parsed = parse_eml(message, receipts_dir=tmp_path)
+
+    assert parsed.attachment_path is not None
+    assert parsed.attachment_path.suffix == ".png"
+    assert parsed.attachment_path.read_bytes() == image
+
+
+def test_an_attachment_cannot_escape_the_directory_it_is_written_to(tmp_path: Path) -> None:
+    image = (RECEIPTS_DIR / "dinner_bill_18jun.png").read_bytes()
+    target = tmp_path / "uploads"
+    target.mkdir()
+    message = _mail_with_part(
+        target, name="escape.eml", payload=image, filename="../../escaped.png"
+    )
+
+    parsed = parse_eml(message, receipts_dir=target, extract_dir=target)
+
+    assert parsed.attachment_path is not None
+    assert parsed.attachment_path.resolve().is_relative_to(target.resolve())
+    assert not (tmp_path.parent / "escaped.png").exists()
+
+
+def test_every_attachment_is_kept_not_just_the_first(tmp_path: Path) -> None:
+    """Two pages of one folio arrive as two parts. Keeping one would drop half a bill."""
+    from email.message import EmailMessage
+    from email.utils import format_datetime
+
+    first = (RECEIPTS_DIR / "dinner_bill_18jun.png").read_bytes()
+    second = (RECEIPTS_DIR / "hotel_invoice_1188.png").read_bytes()
+
+    message = EmailMessage()
+    message["From"] = "Billing <billing@some-hotel.example>"
+    message["Subject"] = "Invoice, both pages"
+    message["Date"] = format_datetime(datetime(2026, 6, 20, 9, 0))
+    message.set_content("Two pages attached.")
+    message.add_attachment(first, maintype="image", subtype="png", filename="page1.png")
+    message.add_attachment(second, maintype="image", subtype="png", filename="page2.png")
+    path = tmp_path / "two_pages.eml"
+    path.write_bytes(bytes(message.as_bytes()))
+
+    parsed = parse_eml(path, receipts_dir=tmp_path)
+
+    assert len(parsed.attachment_paths) == 2
+    assert {p.read_bytes() for p in parsed.attachment_paths} == {first, second}
+    assert "page1.png" in parsed.proof_ref and "page2.png" in parsed.proof_ref
+
+
+def test_a_signature_block_is_not_mistaken_for_a_bill(tmp_path: Path) -> None:
+    from email.message import EmailMessage
+    from email.utils import format_datetime
+
+    message = EmailMessage()
+    message["From"] = "Billing <billing@some-hotel.example>"
+    message["Subject"] = "Invoice"
+    message["Date"] = format_datetime(datetime(2026, 6, 20, 9, 0))
+    message.set_content("Total INR 100.00")
+    message.add_attachment(
+        b"-----BEGIN PGP SIGNATURE-----",
+        maintype="application",
+        subtype="pgp-signature",
+        filename="signature.asc",
+    )
+    path = tmp_path / "signed.eml"
+    path.write_bytes(bytes(message.as_bytes()))
+
+    parsed = parse_eml(path, receipts_dir=tmp_path)
+
+    assert parsed.attachment_paths == ()

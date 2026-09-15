@@ -49,7 +49,9 @@ from expense_api.evidence.store import to_document
 logger = logging.getLogger(__name__)
 
 # Allowlist, never a denylist of "dangerous" extensions. Anything not named here is refused.
-IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg"})
+# A phone photograph (.png/.jpg/.webp) or a scanned/text receipt (.pdf): both are bills the
+# extractor reads from the attachment, so both take the same declared-kind path.
+IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".webp", ".pdf"})
 MAIL_SUFFIXES = frozenset({".eml"})
 ALLOWED_SUFFIXES = IMAGE_SUFFIXES | MAIL_SUFFIXES
 
@@ -155,7 +157,7 @@ async def store_upload(
     suffix = Path(name).suffix.lower()
     if suffix not in ALLOWED_SUFFIXES:
         raise UploadRejected(
-            "Upload a receipt image (.png, .jpg) or a forwarded mail (.eml). "
+            "Upload a receipt image (.png, .jpg, .webp, .pdf) or a forwarded mail (.eml). "
             f"{suffix or 'That file'} is not readable as evidence."
         )
 

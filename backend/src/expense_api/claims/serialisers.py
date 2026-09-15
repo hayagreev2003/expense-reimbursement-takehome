@@ -27,6 +27,7 @@ from expense_api.db.models import (
     SettlementClaim,
     TravelRequest,
 )
+from expense_api.evidence import corrections
 
 
 def to_chain(chain: list[ChainStep]) -> list[ApprovalStepResponse]:
@@ -108,6 +109,10 @@ def to_claim_response(claim: ClaimDraft, *, employee_name: str, deadline: date) 
         needs_input=[
             SetAsideDocumentResponse(source_filename=name, reason=reason)
             for name, reason in sorted(claim.needs_input.items())
+        ],
+        manually_entered=[
+            SetAsideDocumentResponse(source_filename=name, reason=reason)
+            for name, reason in sorted(claim.manually_entered.items())
         ],
     )
 
@@ -233,6 +238,16 @@ def to_persisted_claim_response(
             )
             for document in sorted(documents, key=lambda row: row.source_filename)
             if document.extraction_status is ExtractionStatus.NEEDS_INPUT
+        ],
+        manually_entered=[
+            SetAsideDocumentResponse(
+                source_filename=document.source_filename,
+                reason=(
+                    "Figures entered by the claimant; nothing could be read from the document."
+                ),
+            )
+            for document in sorted(documents, key=lambda row: row.source_filename)
+            if corrections.names_a_human(document)
         ],
         version=claim.version,
         submitted_at=claim.submitted_at,

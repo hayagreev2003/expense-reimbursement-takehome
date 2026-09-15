@@ -94,6 +94,7 @@ async def seed_anchor_trip(session: AsyncSession) -> TravelRequest:
         session,
         emails_dir=settings.pack_dir / "sample_emails",
         receipts_dir=settings.pack_dir / "receipts",
+        extract_dir=settings.extracted_dir,
         claimant_email=employee.email,
         claimant_name=employee.name,
         travel_request_id=request.id,

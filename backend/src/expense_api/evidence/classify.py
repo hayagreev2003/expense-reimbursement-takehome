@@ -11,6 +11,14 @@ It also separates a vendor's own forward of the claimant's receipt (still the cl
 receipt) from a colleague forwarding theirs (someone else's expense entirely). Both are
 forwards; only the sender tells them apart. The rejection itself belongs to attribution - this
 module only has to route it there.
+
+Two tiers, in this order. The **named-sender rules** recognise the formats in the pack exactly,
+and they run first so the pack's own fifteen messages classify the way they always did. The
+**generic rules** underneath catch a receipt from a vendor nobody wrote a rule for: a category
+word corroborated by an amount or a readable attachment. They exist because UNKNOWN is set
+aside without a figure, so a real bill landing there looks to the employee exactly like a bill
+that was dropped - while a document that reaches the extractor and cannot be parsed surfaces as
+needs-input, which is visible and blocks submission.
 """
 
 from __future__ import annotations
@@ -38,6 +46,39 @@ _APPROVED = re.compile(r"\bapproved\b", re.I)
 _FLIGHT = re.compile(r"e-?ticket|flight booking|pnr\b", re.I)
 _HOTEL_VOUCHER = re.compile(r"hotel booking voucher|your stay is confirmed", re.I)
 _MEAL_BILL = re.compile(r"\b(dinner|lunch|breakfast|bill|restaurant|covers)\b", re.I)
+
+# --- generic signals, for a vendor no rule above names ---------------------------------------
+# Each is deliberately broad. On its own none of them classifies anything: _has_money() or a
+# readable attachment has to corroborate, and the specific rules have already had their turn.
+_GENERIC_FLIGHT = re.compile(
+    r"\b(airline|air ?ticket|boarding pass|flight|baggage|indigo|vistara|spicejet|air india"
+    r"|akasa|emirates)\b",
+    re.I,
+)
+_GENERIC_HOTEL = re.compile(
+    r"\b(hotel|folio|room (?:charge|rent|tariff|no)|check-?in|check-?out|nights?|guest"
+    r"|resort|inn|suites|lodging)\b",
+    re.I,
+)
+_GENERIC_CAB = re.compile(
+    r"\b(ride|rides|trip|cab|taxi|auto|fare|pickup|drop-?off|uber|ola|rapido|meru|driver)\b",
+    re.I,
+)
+_GENERIC_MEAL = re.compile(
+    r"\b(dinner|lunch|breakfast|meal|restaurant|cafe|caf\u00e9|kitchen|bistro|diner|dining"
+    r"|covers|swiggy|zomato|food)\b",
+    re.I,
+)
+# A booking confirmation is not the claimable document; the tax invoice is (§3.1).
+_GENERIC_VOUCHER = re.compile(
+    r"\b(voucher|booking (?:confirmed|confirmation|id)|reservation (?:confirmed|id)"
+    r"|your (?:stay|booking) is confirmed)\b",
+    re.I,
+)
+
+# An amount, not a number. A bare integer is a table number or a PNR as often as it is money,
+# so either a currency marker or two decimal places is required.
+_MONEY = re.compile(r"(?:\bINR\b|\bRs\.?|\u20b9)\s*\d|(?<!\d)\d[\d,]*\.\d{2}(?!\d)", re.I)
 
 # Document kinds that go on to extraction. Everything else is context or noise.
 #
@@ -118,7 +159,83 @@ def classify(parsed: ParsedEmail, *, claimant_email: str, claimant_name: str) ->
     if is_claimant and parsed.attachment_path is not None and _MEAL_BILL.search(haystack):
         return DocKind.RESTAURANT_BILL
 
+    # --- generic vendor mail -----------------------------------------------------
+    # Noise first, for the same reason as above: an unseen vendor's sale mail mentions hotels
+    # and amounts, and would otherwise read as a hotel invoice.
+    if _PROMOTIONAL.search(haystack):
+        return DocKind.PROMOTIONAL
+    if _PAYMENT_FAILURE.search(haystack):
+        # Only the cab form has a set-aside reason written for it. Anything else stays UNKNOWN
+        # rather than being described to the employee as something it is not.
+        return DocKind.CAB_PAYMENT_FAILURE if _GENERIC_CAB.search(haystack) else DocKind.UNKNOWN
+
+    # A colleague's internal mail is either the third-party forward handled above or not
+    # evidence of this claimant's expense. It never becomes a claim line by keyword.
+    if is_internal and not is_claimant:
+        return DocKind.UNKNOWN
+
+    if not _has_money(haystack) and parsed.attachment_path is None:
+        return DocKind.UNKNOWN
+
+    # Hotel before meal: a folio itemises breakfast and a restaurant charge, and the document
+    # is still the hotel's invoice. Cab last: "trip" and "fare" appear on most travel mail.
+    if _GENERIC_FLIGHT.search(haystack):
+        return DocKind.FLIGHT_BOOKING
+    if _GENERIC_HOTEL.search(haystack):
+        return DocKind.HOTEL_VOUCHER if _GENERIC_VOUCHER.search(haystack) else DocKind.HOTEL_INVOICE
+    if _GENERIC_MEAL.search(haystack):
+        return DocKind.RESTAURANT_BILL
+    if _GENERIC_CAB.search(haystack):
+        return DocKind.CAB_RECEIPT
+
+    # A forwarded mail whose body says only "invoice attached": the receipt itself names the
+    # vendor. Read the attachment and match on that too, so the figure reaches the extractor
+    # (and, if unreadable, needs-input) instead of being set aside as UNKNOWN.
+    if parsed.attachment_path is not None:
+        attached = _attachment_text(parsed)
+        if attached:
+            extended = f"{haystack}\n{attached}"
+            if _PROMOTIONAL.search(extended):
+                return DocKind.PROMOTIONAL
+            if _GENERIC_FLIGHT.search(extended):
+                return DocKind.FLIGHT_BOOKING
+            if _GENERIC_HOTEL.search(extended):
+                return (
+                    DocKind.HOTEL_VOUCHER
+                    if _GENERIC_VOUCHER.search(extended)
+                    else DocKind.HOTEL_INVOICE
+                )
+            if _GENERIC_MEAL.search(extended):
+                return DocKind.RESTAURANT_BILL
+            if _GENERIC_CAB.search(extended):
+                return DocKind.CAB_RECEIPT
+
     return DocKind.UNKNOWN
+
+
+def _attachment_text(parsed: ParsedEmail) -> str | None:
+    """OCR/PDF text of the message's attachments, for classification only.
+
+    Best effort: anything unreadable is simply absent, and the caller falls through to
+    UNKNOWN. Imported lazily so a missing OCR binary never breaks classification of a
+    body-readable mail.
+    """
+    from expense_api.evidence.extractors.ocr import read_attachment_text
+
+    chunks: list[str] = []
+    for attachment in parsed.attachment_paths:
+        try:
+            text = read_attachment_text(attachment)
+        except (OSError, ValueError):
+            continue
+        if text and text.strip():
+            chunks.append(text.strip())
+    combined = "\n".join(chunks).strip()
+    return combined or None
+
+
+def _has_money(text: str) -> bool:
+    return _MONEY.search(text) is not None
 
 
 def _from_any(sender: str, domains: tuple[str, ...]) -> bool:

@@ -57,7 +57,15 @@ export interface paths {
          */
         get: operations["list_trips_api_v1_trips_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Trip
+         * @description Apply for a new trip, which is what a settlement claim is later filed against.
+         *
+         *     The trip belongs to the caller and starts with no evidence, so its claim is an empty
+         *     draft: upload bills, submit when ready. Any signed-in profile may apply; an approver
+         *     sees only their own application until it is routed to someone, like any other trip.
+         */
+        post: operations["create_trip_api_v1_trips_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -135,6 +143,35 @@ export interface paths {
          *     an inconvenient receipt is precisely the failure this system exists to prevent.
          */
         delete: operations["remove_document_api_v1_trips__trq_id__documents__external_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trips/{trq_id}/documents/{external_id}/correction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Correct Document
+         * @description Say what a bill says, when nothing could read it.
+         *
+         *     A document that needs input blocks submission, and until this route existed the block had no
+         *     exit: deleting the bill and uploading the same unreadable image again changes nothing. The
+         *     claimant's two honest moves are to withdraw the line or to enter the figures, and this is the
+         *     second one.
+         *
+         *     It is not a way past policy. The entered lines are drafted, attributed, deduplicated and
+         *     judged like any read ones, the claim is re-evaluated on the way out, and the document carries
+         *     a marker that says its figures were typed - which the approver's screen shows.
+         */
+        post: operations["correct_document_api_v1_trips__trq_id__documents__external_id__correction_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -403,6 +440,11 @@ export interface components {
             /** Note */
             note?: string | null;
         };
+        /**
+         * CityClass
+         * @enum {string}
+         */
+        CityClass: "Tier 1" | "Tier 2" | "Tier 3";
         /** ClaimLineResponse */
         ClaimLineResponse: {
             /** Index */
@@ -479,6 +521,8 @@ export interface components {
             suppressed_duplicates: components["schemas"]["SuppressedDuplicateResponse"][];
             /** Needs Input */
             needs_input: components["schemas"]["SetAsideDocumentResponse"][];
+            /** Manually Entered */
+            manually_entered: components["schemas"]["SetAsideDocumentResponse"][];
             /** Version */
             version?: number | null;
             /** Submitted At */
@@ -498,6 +542,91 @@ export interface components {
              * @default false
              */
             awaiting_me: boolean;
+        };
+        /**
+         * CorrectDocumentRequest
+         * @description What a bill says, entered by hand, when extraction could not say it.
+         *
+         *     `stated_total` is optional and is a guard, not data: give the total printed on the bill and
+         *     the lines must add up to it. That is the same discipline the reconciliation check applies to
+         *     a read document, and it is the only thing standing between a typo and a claim line.
+         */
+        CorrectDocumentRequest: {
+            /** Lines */
+            lines: components["schemas"]["CorrectedLineRequest"][];
+            /** Stated Total */
+            stated_total?: number | string | null;
+        };
+        /**
+         * CorrectedLineRequest
+         * @description One line as the claimant reads it off a bill nothing could read for them.
+         *
+         *     `paid_by` is asked rather than inferred. On a read bill the payment method is printed on it;
+         *     here there is nothing to read, and a line silently defaulted to Company drops out of the
+         *     reimbursable total - the more damaging direction to be wrong in.
+         */
+        CorrectedLineRequest: {
+            /** Description */
+            description: string;
+            /** Gross Amount */
+            gross_amount: number | string;
+            /**
+             * Txn Date
+             * Format: date
+             */
+            txn_date: string;
+            /** Merchant */
+            merchant?: string | null;
+            /** Bill No */
+            bill_no?: string | null;
+            /** Tax Amount */
+            tax_amount?: number | string | null;
+            /** Nights */
+            nights?: number | null;
+            /**
+             * Paid By
+             * @default Employee
+             * @enum {string}
+             */
+            paid_by: "Employee" | "Company";
+        };
+        /**
+         * CreateTripRequest
+         * @description Apply for a new trip, which is what a settlement claim is later filed against.
+         *
+         *     One model for this direction only; the trip is read back as TripSummaryResponse.
+         *     `travel_category` defaults to "Domestic - <city class>" when omitted, matching the
+         *     seeded trip's form. An advance named here is a *request*, not money disbursed -
+         *     Finance disburses separately and only disbursed advances settle against the claim.
+         */
+        CreateTripRequest: {
+            /** Destination City */
+            destination_city: string;
+            /**
+             * From Date
+             * Format: date
+             */
+            from_date: string;
+            /**
+             * To Date
+             * Format: date
+             */
+            to_date: string;
+            /** Purpose */
+            purpose: string;
+            city_class: components["schemas"]["CityClass"];
+            /**
+             * Mode Of Travel
+             * @default Flight
+             * @enum {string}
+             */
+            mode_of_travel: "Flight" | "Train" | "Bus" | "Cab" | "Self-drive";
+            /** Visiting Company */
+            visiting_company?: string | null;
+            /** Travel Category */
+            travel_category?: string | null;
+            /** Advance Requested */
+            advance_requested?: number | string | null;
         };
         /** CurrentUserResponse */
         CurrentUserResponse: {
@@ -746,6 +875,16 @@ export interface components {
             needs_input_reason: string | null;
             /** Uploaded */
             uploaded: boolean;
+            /**
+             * Manually Entered
+             * @default false
+             */
+            manually_entered: boolean;
+            /**
+             * Correctable
+             * @default false
+             */
+            correctable: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -848,6 +987,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TripSummaryResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_trip_api_v1_trips_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Emp-Code"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTripRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TripSummaryResponse"];
                 };
             };
             /** @description Validation Error */
@@ -984,6 +1158,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_document_api_v1_trips__trq_id__documents__external_id__correction_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Emp-Code"?: string | null;
+            };
+            path: {
+                trq_id: string;
+                external_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectDocumentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

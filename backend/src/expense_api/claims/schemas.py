@@ -12,7 +12,9 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+
+from expense_api.db.models import CityClass
 
 
 class Money(BaseModel):
@@ -108,6 +110,11 @@ class ClaimResponse(BaseModel):
     set_aside: list[SetAsideDocumentResponse]
     suppressed_duplicates: list[SuppressedDuplicateResponse]
     needs_input: list[SetAsideDocumentResponse]
+    # Documents whose figures the claimant typed in. An approver signing a claim is entitled to
+    # know which of its numbers came off a bill and which came off a keyboard. Required rather
+    # than defaulted: a default makes it optional in the generated client, and the browser then
+    # has to guard a list the server always sends.
+    manually_entered: list[SetAsideDocumentResponse]
 
     # Present once the claim has been submitted and written down. `version` is the optimistic
     # lock an approver's decision is pinned to; sending a decision without it would let two
@@ -125,6 +132,32 @@ class ClaimResponse(BaseModel):
     @field_serializer("submitted_at")
     def _submitted_utc(self, value: datetime | None) -> str | None:
         return value.isoformat().replace("+00:00", "Z") if value else None
+
+
+class CreateTripRequest(BaseModel):
+    """Apply for a new trip, which is what a settlement claim is later filed against.
+
+    One model for this direction only; the trip is read back as TripSummaryResponse.
+    `travel_category` defaults to "Domestic - <city class>" when omitted, matching the
+    seeded trip's form. An advance named here is a *request*, not money disbursed -
+    Finance disburses separately and only disbursed advances settle against the claim.
+    """
+
+    destination_city: str = Field(min_length=2, max_length=80)
+    from_date: date
+    to_date: date
+    purpose: str = Field(min_length=4, max_length=300)
+    city_class: CityClass
+    mode_of_travel: Literal["Flight", "Train", "Bus", "Cab", "Self-drive"] = "Flight"
+    visiting_company: str | None = Field(default=None, max_length=160)
+    travel_category: str | None = Field(default=None, max_length=60)
+    advance_requested: Decimal | None = Field(default=None, ge=Decimal("0.00"))
+
+    @model_validator(mode="after")
+    def _dates_ordered(self) -> CreateTripRequest:
+        if self.to_date < self.from_date:
+            raise ValueError("The trip cannot end before it begins.")
+        return self
 
 
 class TripSummaryResponse(BaseModel):
@@ -183,11 +216,75 @@ class UploadedDocumentResponse(BaseModel):
     extraction_status: str
     needs_input_reason: str | None
     uploaded: bool
+    # Figures typed in by the claimant because nothing could read the document.
+    manually_entered: bool = False
+    # Whether this document will accept a correction. False for anything that was read and
+    # reconciled, and for every document once the claim has left draft.
+    correctable: bool = False
 
 
 class UploadDocumentResponse(BaseModel):
     document: UploadedDocumentResponse
     message: str
+
+
+class CorrectedLineRequest(BaseModel):
+    """One line as the claimant reads it off a bill nothing could read for them.
+
+    `paid_by` is asked rather than inferred. On a read bill the payment method is printed on it;
+    here there is nothing to read, and a line silently defaulted to Company drops out of the
+    reimbursable total - the more damaging direction to be wrong in.
+    """
+
+    description: str = Field(min_length=2, max_length=300)
+    gross_amount: Decimal = Field(gt=Decimal("0.00"), max_digits=12, decimal_places=2)
+    txn_date: date
+    merchant: str | None = Field(default=None, max_length=200)
+    bill_no: str | None = Field(default=None, max_length=60)
+    # A component of the gross above, not an addition to it.
+    tax_amount: Decimal | None = Field(default=None, ge=Decimal("0.00"), max_digits=12)
+    # Lodging only. §3.1 is a per-night limit, so a folio without this is measured against one
+    # night's tariff and most of it disallowed.
+    nights: int | None = Field(default=None, ge=1, le=120)
+    paid_by: Literal["Employee", "Company"] = "Employee"
+
+    @model_validator(mode="after")
+    def _tax_is_within_the_gross(self) -> CorrectedLineRequest:
+        if self.tax_amount is not None and self.tax_amount > self.gross_amount:
+            raise ValueError("The tax on a line cannot exceed the line itself.")
+        return self
+
+
+class CorrectDocumentRequest(BaseModel):
+    """What a bill says, entered by hand, when extraction could not say it.
+
+    `stated_total` is optional and is a guard, not data: give the total printed on the bill and
+    the lines must add up to it. That is the same discipline the reconciliation check applies to
+    a read document, and it is the only thing standing between a typo and a claim line.
+    """
+
+    lines: list[CorrectedLineRequest] = Field(min_length=1, max_length=40)
+    stated_total: Decimal | None = Field(default=None, gt=Decimal("0.00"), max_digits=12)
+
+    def total_mismatch(self) -> str | None:
+        """Why these lines do not match the total on the bill, if they do not.
+
+        Checked here but raised by the router, deliberately. A Pydantic validation error comes
+        back as an array that echoes the submitted values, so the client cannot show it and
+        falls back to "some details need correcting" - which hides the one number the claimant
+        needs to see. The router raises it as `{code, message}`, which is renderable.
+        """
+        if self.stated_total is None:
+            return None
+
+        entered = sum((line.gross_amount for line in self.lines), Decimal("0.00"))
+        if entered == self.stated_total:
+            return None
+
+        return (
+            f"The lines add up to {entered:.2f}, not the {self.stated_total:.2f} stated on the "
+            f"bill. Correct the lines or the total."
+        )
 
 
 class WithdrawLineRequest(BaseModel):

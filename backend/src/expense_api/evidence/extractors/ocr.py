@@ -27,6 +27,42 @@ class OcrUnavailableError(RuntimeError):
     """tesseract is not installed or not on PATH."""
 
 
+def read_attachment_text(path: Path) -> str | None:
+    """Text from whatever a bill arrives as: an image via OCR, a PDF via text extraction.
+
+    Returns None when nothing readable could be pulled out, so callers fall through to
+    needs-input rather than treating an empty string as a document with no total.
+    """
+    if path.suffix.lower() == ".pdf":
+        text = _pdf_text(path)
+        # A scanned PDF has no embedded text. Rendering it needs poppler, which the image
+        # does not carry, so it surfaces as needs-input with the file kept alongside.
+        return text if text and text.strip() else None
+    try:
+        return ocr_image(path)
+    except (OcrUnavailableError, FileNotFoundError):
+        return None
+
+
+def _pdf_text(path: Path) -> str | None:
+    """Embedded text of a PDF, page by page. No OCR: a scanned image-PDF has none."""
+    try:
+        from pypdf import PdfReader
+    except ImportError:  # pragma: no cover - dependency is installed with the app
+        logger.warning("pypdf missing: cannot read %s", path.name)
+        return None
+    if not path.exists():
+        return None
+    try:
+        reader = PdfReader(str(path))
+        chunks = [(page.extract_text() or "") for page in reader.pages]
+    except Exception as exc:  # noqa: BLE001 - pypdf raises several unrelated types
+        logger.warning("Could not read PDF %s: %s", path.name, exc)
+        return None
+    text = "\n".join(chunk.strip() for chunk in chunks if chunk and chunk.strip()).strip()
+    return text or None
+
+
 @lru_cache(maxsize=64)
 def ocr_image(path: Path) -> str:
     """Text from an image. Cached, because the same receipt is read more than once per run."""
@@ -83,10 +119,13 @@ def warm_cache(receipts_dir: Path) -> tuple[int, float]:
     started = time.monotonic()
     read = 0
     for path in sorted(receipts_dir.glob("*")):
-        if path.suffix.lower() not in {".png", ".jpg", ".jpeg"}:
+        if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp", ".pdf"}:
             continue
         try:
-            ocr_image(path)
+            if path.suffix.lower() == ".pdf":
+                read_attachment_text(path)
+            else:
+                ocr_image(path)
             read += 1
         except (OcrUnavailableError, OSError) as exc:
             # One unreadable image must not stop the application from starting. It will surface

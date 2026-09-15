@@ -11,10 +11,12 @@ exists, which is exactly what someone probing for other people's claims is tryin
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -25,6 +27,9 @@ from expense_api.claims.materialise import submit as materialise_submit
 from expense_api.claims.pipeline import ClaimDraft, build_claim
 from expense_api.claims.schemas import (
     ClaimResponse,
+    CorrectDocumentRequest,
+    CorrectedLineRequest,
+    CreateTripRequest,
     EmployeeResponse,
     SubmitClaimResponse,
     TripSummaryResponse,
@@ -45,6 +50,9 @@ from expense_api.db.models import (
     SettlementClaim,
     TravelRequest,
 )
+from expense_api.evidence import corrections
+from expense_api.evidence.classify import produces_claim_lines
+from expense_api.evidence.extractors.base import ExtractedItem
 from expense_api.evidence.uploads import (
     DECLARABLE_KINDS,
     UploadRejected,
@@ -109,6 +117,93 @@ async def list_trips(session: Session, user: CurrentUser) -> list[TripSummaryRes
     return out
 
 
+@router.post("/trips", response_model=TripSummaryResponse, status_code=201, tags=["trips"])
+async def create_trip(
+    payload: CreateTripRequest, session: Session, user: CurrentUser
+) -> TripSummaryResponse:
+    """Apply for a new trip, which is what a settlement claim is later filed against.
+
+    The trip belongs to the caller and starts with no evidence, so its claim is an empty
+    draft: upload bills, submit when ready. Any signed-in profile may apply; an approver
+    sees only their own application until it is routed to someone, like any other trip.
+    """
+    destination = payload.destination_city.strip()
+    purpose = payload.purpose.strip()
+    visiting = payload.visiting_company.strip() if payload.visiting_company else None
+
+    request: TravelRequest | None = None
+    for _ in range(3):
+        # Nothing else is in this session yet, so rolling back a lost trq_id race is safe.
+        trq_id = await _next_trq_id(session, payload.from_date.year)
+        request = TravelRequest(
+            trq_id=trq_id,
+            employee_id=user.id,
+            from_date=payload.from_date,
+            to_date=payload.to_date,
+            destination_city=destination,
+            city_class=payload.city_class,
+            visiting_company=visiting or None,
+            purpose=purpose,
+            travel_category=payload.travel_category or f"Domestic - {payload.city_class.value}",
+            mode_of_travel=payload.mode_of_travel,
+            cost_centre=user.cost_centre,
+            advance_requested=payload.advance_requested,
+            issued_on=date.today(),
+        )
+        session.add(request)
+        try:
+            await session.flush()
+        except IntegrityError:
+            await session.rollback()
+            request = None
+            continue
+        break
+
+    if request is None:  # pragma: no cover - three lost races in a row
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "trip_not_created", "message": "Try applying again."},
+        )
+
+    session.add(
+        ClaimEvent(
+            travel_request_id=request.id,
+            actor_employee_id=user.id,
+            action="trip_created",
+            payload={"trq_id": request.trq_id, "destination": destination},
+        )
+    )
+    await session.commit()
+
+    return TripSummaryResponse(
+        external_id=request.external_id,
+        trq_id=request.trq_id,
+        employee_name=user.name,
+        employee_code=user.emp_code,
+        destination=request.destination_city,
+        from_date=request.from_date,
+        to_date=request.to_date,
+        status="draft",
+        payable="0.00",
+        submission_deadline=submission_deadline(request.to_date),
+    )
+
+
+async def _next_trq_id(session: AsyncSession, year: int) -> str:
+    """The next `TRQ-<year>-NNNN`, after whatever is already taken for that year."""
+    prefix = f"TRQ-{year}-"
+    taken = {
+        int(suffix)
+        for (trq,) in (
+            await session.execute(
+                select(TravelRequest.trq_id).where(TravelRequest.trq_id.like(f"{prefix}%"))
+            )
+        ).all()
+        if (suffix := trq[len(prefix) :]).isdigit()
+    }
+    return f"{prefix}{max(taken, default=0) + 1:04d}"
+
+
 @router.get("/trips/{trq_id}/claim", response_model=ClaimResponse, tags=["trips"])
 async def get_claim(trq_id: str, session: Session, user: CurrentUser) -> ClaimResponse:
     """The claim as it stands.
@@ -155,6 +250,13 @@ async def list_documents(
 ) -> list[UploadedDocumentResponse]:
     """Everything attached to this trip: the mailed evidence and anything uploaded."""
     request = await _require_visible_trip(session, trq_id, user)
+    claim = await load_claim(session, request.id)
+    # Only the claimant, and only while the claim is still a draft, can correct anything. An
+    # approver looking at these documents gets the flag as False, which is what it means to them.
+    editable = (claim is None or claim.status is ClaimStatus.DRAFT) and (
+        request.employee_id == user.id
+    )
+
     return [
         UploadedDocumentResponse(
             external_id=document.external_id,
@@ -164,6 +266,12 @@ async def list_documents(
             extraction_status=document.extraction_status.value,
             needs_input_reason=document.needs_input_reason,
             uploaded=document.source_path is not None,
+            manually_entered=corrections.names_a_human(document),
+            correctable=(
+                editable
+                and produces_claim_lines(document.doc_kind)
+                and corrections.is_correctable(document)
+            ),
         )
         for document in await _documents(session, request.id)
     ]
@@ -218,6 +326,9 @@ async def upload_document(
             extraction_status=document.extraction_status.value,
             needs_input_reason=document.needs_input_reason,
             uploaded=True,
+            correctable=(
+                produces_claim_lines(document.doc_kind) and corrections.is_correctable(document)
+            ),
         ),
         message=f"Added {document.source_filename} as {document.doc_kind.value.replace('_', ' ')}.",
     )
@@ -257,6 +368,132 @@ async def remove_document(
 
     await delete_upload(session, document=document)
     await session.commit()
+
+
+@router.post(
+    "/trips/{trq_id}/documents/{external_id}/correction",
+    response_model=ClaimResponse,
+    tags=["evidence"],
+)
+async def correct_document(
+    trq_id: str,
+    external_id: str,
+    payload: CorrectDocumentRequest,
+    session: Session,
+    user: CurrentUser,
+) -> ClaimResponse:
+    """Say what a bill says, when nothing could read it.
+
+    A document that needs input blocks submission, and until this route existed the block had no
+    exit: deleting the bill and uploading the same unreadable image again changes nothing. The
+    claimant's two honest moves are to withdraw the line or to enter the figures, and this is the
+    second one.
+
+    It is not a way past policy. The entered lines are drafted, attributed, deduplicated and
+    judged like any read ones, the claim is re-evaluated on the way out, and the document carries
+    a marker that says its figures were typed - which the approver's screen shows.
+    """
+    request = await _require_own_draft(session, trq_id, user)
+
+    document = (
+        await session.execute(
+            select(EvidenceDocument)
+            # The correction replaces these rows, so they have to be loaded before it runs.
+            .options(selectinload(EvidenceDocument.line_items))
+            .where(
+                EvidenceDocument.external_id == external_id,
+                EvidenceDocument.travel_request_id == request.id,
+            )
+        )
+    ).scalar_one_or_none()
+
+    if document is None:
+        raise HTTPException(status_code=404, detail="No such document")
+
+    if not produces_claim_lines(document.doc_kind):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "not_claimable",
+                "message": (
+                    "This document is not a bill, so there is nothing on it to claim. "
+                    "Upload the tax invoice instead."
+                ),
+            },
+        )
+
+    mismatch = payload.total_mismatch()
+    if mismatch is not None:
+        raise HTTPException(status_code=422, detail={"code": "total_mismatch", "message": mismatch})
+
+    if not corrections.is_correctable(document):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "already_read",
+                "message": (
+                    "This document was read and its figures reconcile, so there is nothing to "
+                    "correct. Withdraw the line if it should not be claimed."
+                ),
+            },
+        )
+
+    corrections.apply(document, [_entered_item(line) for line in payload.lines])
+
+    session.add(
+        ClaimEvent(
+            travel_request_id=request.id,
+            actor_employee_id=user.id,
+            action="document_corrected",
+            # The figures as submitted, so a later correction does not erase this one. Strings,
+            # because Decimal and date are not JSON and the audit trail is a JSON column.
+            payload={
+                "source_filename": document.source_filename,
+                "proof_ref": document.proof_ref,
+                "stated_total": (
+                    f"{payload.stated_total:.2f}" if payload.stated_total is not None else None
+                ),
+                "lines": [
+                    {
+                        "description": line.description,
+                        "gross_amount": f"{line.gross_amount:.2f}",
+                        "txn_date": line.txn_date.isoformat(),
+                        "paid_by": line.paid_by,
+                        "nights": line.nights,
+                    }
+                    for line in payload.lines
+                ],
+            },
+        )
+    )
+    await session.commit()
+
+    draft = await _claim_for(session, request)
+    await session.commit()
+    return serialisers.to_claim_response(
+        draft,
+        employee_name=user.name,
+        deadline=submission_deadline(request.to_date),
+    )
+
+
+def _entered_item(line: CorrectedLineRequest) -> ExtractedItem:
+    """One typed line, in the shape an extractor would have produced.
+
+    `payment_method` carries the claimant's answer in the wording the Paid By derivation already
+    reads, rather than a second parallel way of saying the same thing.
+    """
+    return ExtractedItem(
+        gross_amount=line.gross_amount,
+        description=line.description.strip(),
+        merchant=(line.merchant or "").strip() or None,
+        txn_date=line.txn_date,
+        tax_amount=line.tax_amount,
+        payment_method="Corporate card" if line.paid_by == "Company" else "Personal card",
+        bill_no=(line.bill_no or "").strip() or None,
+        nights=line.nights,
+        raw_span="Entered by the claimant.",
+    )
 
 
 @router.post("/trips/{trq_id}/claim/withdraw", response_model=ClaimResponse, tags=["trips"])
@@ -366,6 +603,8 @@ async def _documents(session: AsyncSession, travel_request_id: int) -> list[Evid
         (
             await session.execute(
                 select(EvidenceDocument)
+                # is_correctable() reads line_items, and a lazy load in an async session raises.
+                .options(selectinload(EvidenceDocument.line_items))
                 .where(EvidenceDocument.travel_request_id == travel_request_id)
                 .order_by(EvidenceDocument.source_filename)
             )
@@ -503,5 +742,6 @@ async def _claim_for(session: AsyncSession, request: TravelRequest) -> ClaimDraf
         travel_request=request,
         emails_dir=settings.pack_dir / "sample_emails",
         receipts_dir=settings.pack_dir / "receipts",
+        extract_dir=settings.extracted_dir,
         withdrawn_descriptions=withdrawals.for_trip(request.trq_id),
     )

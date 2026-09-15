@@ -101,6 +101,16 @@ class Settings(BaseSettings):
         return value if value.is_absolute() else (BACKEND_ROOT / value).resolve()
 
     @cached_property
+    def extracted_dir(self) -> Path:
+        """Where attachments carried as bytes by pack mail are written.
+
+        Under `upload_dir` rather than beside the message, because the pack is mounted
+        read-only: a `.eml` dropped into the pack's inbox for testing carries real MIME parts,
+        and writing them next to it would fail.
+        """
+        return self.upload_dir / "extracted"
+
+    @cached_property
     def database_url(self) -> str:
         """Async URL for the application engine."""
         return f"sqlite+aiosqlite:///{self.database_path}"

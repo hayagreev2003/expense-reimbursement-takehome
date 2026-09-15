@@ -22,9 +22,25 @@ One protocol, two implementations, identical output shape:
 - **`LlmExtractor`** — a model with vision and structured output. Activated only when a
   credential is present.
 
-Everything downstream is adapter-agnostic. The honest limitation: the rule-based parsers are
-tuned to the sender formats in the pack and will not parse an unseen vendor. That is what the
-second adapter is for, and it is why the seam exists rather than the parsers being inlined.
+Everything downstream is adapter-agnostic.
+
+The rule-based adapter has two layers. The **per-sender parsers** decompose a bill the way its
+sender lays it out, which is what policy needs — a folio is five differently-treated charges,
+not one total. Underneath sits a **generic reader** for a vendor nobody wrote a parser for: one
+line for the whole bill, taken from a labelled total in the message body or in OCR of its
+attachment.
+
+The fallback is deliberately narrow, and the two constraints on it are load-bearing:
+
+- It runs **only when the specific parser produced no lines at all**. Once that parser has read
+  even one line, its reconciliation verdict stands — a whole-bill total balances against itself
+  and would bury exactly the discrepancy `reconcile.py` exists to surface.
+- It **never infers a figure**. No labelled total means needs-input, which is visible in the UI
+  and blocks submission. An unlabelled number in a bill is a table number or a PNR as often as
+  it is money.
+
+A decomposed read is still strictly better than a generic one, so the LLM seam remains the
+answer for reading an unseen vendor properly rather than adding regexes indefinitely.
 
 > The LLM adapter has never been executed. There is no API credential in the build environment.
 > It ships as a seam and is described as untested — do not present it as working.
@@ -40,12 +56,30 @@ Two documents must never reach the extractor:
 Both are recorded so the UI can show they were seen and set aside, rather than looking like
 something was missed.
 
+## Two forms of attachment, one thing downstream
+
+Nothing after ingest can read bytes: the OCR adapter and the LLM adapter both take a path. So
+`ingest.py` turns both forms a message can carry into a path on disk.
+
+**The pack's form is a placeholder.** Messages 11 and 12 declare
+`Content-Transfer-Encoding: base64`, but the part body is the literal text
+`[ATTACHMENT: see receipts/<name> in this pack]`. A standard MIME parser produces a part with
+nothing decodable in it and both receipt images vanish silently. The placeholder is resolved
+against `pack/receipts/`.
+
+**A real mailbox's form is the bytes.** They are written to `extract_dir` under a name derived
+from the message (`<message stem>--<attachment name>`), and that path is what the pipeline sees.
+The name is derived rather than randomised because a draft claim is recomputed from its evidence
+on every read, so the same message is parsed many times and has to find the file it wrote last
+time. Every attachment is kept, not only the first — two pages of one folio arrive as two parts.
+
+`extract_dir` has to be writable, which `pack/` is not: callers reading pack mail pass
+`settings.extracted_dir` (under `upload_dir`). An upload defaults to the message's own
+directory, which already is the upload directory.
+
 ## Four things the pack does deliberately
 
-**Attachments are placeholders.** Messages 11 and 12 declare `Content-Transfer-Encoding: base64`,
-but the part body is the literal text `[ATTACHMENT: see receipts/<name> in this pack]`. A
-standard MIME parser produces a part with nothing decodable in it and both receipt images vanish
-silently. Resolve the placeholder against `pack/receipts/`.
+**Attachments are placeholders**, per the section above.
 
 **Consolidated bills must be decomposed.** The hotel folio is not a 21,504 expense. It is three
 room charges, a laundry charge, a mini bar charge and an in-room dining charge, each of which the

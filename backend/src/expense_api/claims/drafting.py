@@ -9,6 +9,7 @@ applies, and in-room dining filed as a folio extra rather than a meal loses the 
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -134,8 +135,7 @@ def find_coverage_gaps(
     *,
     trip_from: date,
     trip_to: date,
-    lodging_check_in: date | None,
-    lodging_nights: int | None,
+    stays: Sequence[tuple[date, int]],
 ) -> list[date]:
     """Nights of the trip with no accommodation evidence behind them (R25).
 
@@ -143,13 +143,17 @@ def find_coverage_gaps(
     from the 16th, so the night of the 19th is unaccounted for while the return flight is not
     until the evening of the 20th. Something happened that night; the system does not know
     what, and inventing a line would be worse than saying so.
+
+    Every stay counts, not just one. A trip can carry two hotel bills - one mailed, one the
+    employee forwards later - and reading only the most recent would report the nights the
+    first one covers as unaccounted for.
     """
     nights_needed = {
         trip_from + timedelta(days=offset) for offset in range((trip_to - trip_from).days)
     }
 
-    covered: set[date] = set()
-    if lodging_check_in is not None and lodging_nights:
-        covered = {lodging_check_in + timedelta(days=offset) for offset in range(lodging_nights)}
+    covered = {
+        check_in + timedelta(days=offset) for check_in, nights in stays for offset in range(nights)
+    }
 
     return sorted(nights_needed - covered)

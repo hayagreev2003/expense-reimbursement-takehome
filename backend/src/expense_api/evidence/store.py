@@ -25,7 +25,12 @@ from expense_api.db.models import (
     ExtractionStatus,
 )
 from expense_api.evidence.classify import classify, produces_claim_lines
-from expense_api.evidence.ingest import EmailParseError, ParsedEmail, parse_eml
+from expense_api.evidence.ingest import (
+    AttachmentNotFoundError,
+    EmailParseError,
+    ParsedEmail,
+    parse_eml,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,15 +57,23 @@ async def ingest_directory(
     claimant_email: str,
     claimant_name: str,
     travel_request_id: int | None = None,
+    extract_dir: Path | None = None,
 ) -> IngestReport:
+    """Read a mail directory into evidence rows.
+
+    `extract_dir` is where a message that carries its attachment as bytes has it written out.
+    It has to be writable, which `emails_dir` is not when it is the pack's own inbox.
+    """
     report = IngestReport()
 
     existing_ids = set((await session.execute(select(EvidenceDocument.message_id))).scalars().all())
 
     for path in sorted(emails_dir.glob("*.eml")):
         try:
-            parsed = parse_eml(path, receipts_dir=receipts_dir)
-        except (EmailParseError, OSError) as exc:
+            parsed = parse_eml(
+                path, receipts_dir=receipts_dir, extract_dir=extract_dir or receipts_dir
+            )
+        except (AttachmentNotFoundError, EmailParseError, OSError) as exc:
             # One unreadable message must not abandon the other fourteen. Record it so the
             # employee can see something arrived and could not be read.
             logger.warning("Skipping %s: %s", path.name, exc)

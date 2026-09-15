@@ -139,6 +139,122 @@ async def test_a_photographed_bill_becomes_evidence(
     assert any(row["source_filename"] == "late_dinner.eml" for row in listed.json())
 
 
+def _forwarded_mail(*, subject: str, body: str, attachment: bytes | None = None) -> bytes:
+    """A message in the form a mail client produces when an employee forwards a receipt."""
+    from datetime import datetime
+    from email.message import EmailMessage
+    from email.utils import format_datetime
+
+    message = EmailMessage()
+    message["From"] = "Sunrise Residency <billing@sunriseresidency.example>"
+    message["To"] = "chaitanya.reddy@nortexindustries.com"
+    message["Subject"] = subject
+    message["Date"] = format_datetime(datetime(2026, 6, 19, 8, 30))
+    message["Message-ID"] = "<sr-4471@sunriseresidency.example>"
+    message.set_content(body)
+    if attachment is not None:
+        message.add_attachment(attachment, maintype="image", subtype="png", filename="invoice.png")
+    return bytes(message.as_bytes())
+
+
+async def test_a_forwarded_mail_from_an_unseen_vendor_becomes_a_claim_line(
+    api_client: AsyncClient, seeded_trip: TravelRequest
+) -> None:
+    """The pack is the demo's inbox, not the product's. A real forward has to work.
+
+    No declared kind: an `.eml` carries a sender and a subject, so classification has something
+    to work from, and asking the employee what their own receipt is would be theatre.
+    """
+    response = await api_client.post(
+        f"/api/v1/trips/{TRQ}/documents",
+        files={
+            "file": (
+                "sunrise_invoice.eml",
+                _forwarded_mail(
+                    subject="Invoice no SR/4471 for your stay",
+                    body=(
+                        "Guest: Chaitanya Reddy\nCheck-in 16 Jun 2026\nNights 3\n"
+                        "Sub total  9,000.00\nCGST 6%  540.00\nSGST 6%  540.00\n"
+                        "Grand total  10,080.00\nSettled by: Personal Card\n"
+                    ),
+                ),
+                "message/rfc822",
+            )
+        },
+        headers=_as(CLAIMANT),
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["document"]["doc_kind"] == "hotel_invoice"
+
+    claim = await api_client.get(f"/api/v1/trips/{TRQ}/claim", headers=_as(CLAIMANT))
+    assert claim.status_code == 200
+    assert "sunrise_invoice.eml" in claim.text
+
+
+async def test_a_forwarded_mails_own_attachment_reaches_the_extractor(
+    api_client: AsyncClient, seeded_trip: TravelRequest
+) -> None:
+    """The bytes come with the mail, and have to be written where OCR can read them.
+
+    This is the regression that matters most: a part that was never written out left the
+    document with no receipt behind it, and nothing said so.
+    """
+    image = (settings.pack_dir / "receipts" / "dinner_bill_18jun.png").read_bytes()
+
+    response = await api_client.post(
+        f"/api/v1/trips/{TRQ}/documents",
+        files={
+            "file": (
+                "with_receipt.eml",
+                _forwarded_mail(
+                    subject="Invoice no SR/4472 for your stay",
+                    body="Invoice attached. Grand total 10,080.00\n",
+                    attachment=image,
+                ),
+                "message/rfc822",
+            )
+        },
+        headers=_as(CLAIMANT),
+    )
+
+    assert response.status_code == 201, response.text
+    proof_ref = response.json()["document"]["proof_ref"]
+    assert "invoice.png" in proof_ref
+
+    written = [p for p in Path(settings.upload_dir).rglob("*invoice.png")]
+    assert written, "the attachment should have been written out of the message"
+    for path in written:
+        assert path.read_bytes() == image
+        assert path.resolve().is_relative_to(settings.upload_dir.resolve())
+
+
+async def test_a_photographed_hotel_bill_is_read_from_the_image(
+    api_client: AsyncClient, seeded_trip: TravelRequest
+) -> None:
+    """A declared kind with no body to read: every figure has to come from OCR."""
+    image = (settings.pack_dir / "receipts" / "hotel_invoice_1188.png").read_bytes()
+
+    response = await api_client.post(
+        f"/api/v1/trips/{TRQ}/documents",
+        files={"file": ("folio.png", image, "image/png")},
+        data={"doc_kind": "hotel_invoice"},
+        headers=_as(CLAIMANT),
+    )
+
+    assert response.status_code == 201, response.text
+
+    # Extraction statuses are written while the draft is computed, so read the claim first.
+    claim = await api_client.get(f"/api/v1/trips/{TRQ}/claim", headers=_as(CLAIMANT))
+    assert claim.status_code == 200
+    assert "folio.eml" in claim.text
+
+    documents = await api_client.get(f"/api/v1/trips/{TRQ}/documents", headers=_as(CLAIMANT))
+    row = next(r for r in documents.json() if r["source_filename"] == "folio.eml")
+    # Read, not parked in needs-input forever, which is what a body-only parser produced.
+    assert row["extraction_status"] == "extracted", row
+
+
 async def test_an_upload_never_lands_inside_the_read_only_pack(
     api_client: AsyncClient, seeded_trip: TravelRequest
 ) -> None:

@@ -176,19 +176,28 @@ def test_the_unaccounted_night_is_flagged() -> None:
     gaps = find_coverage_gaps(
         trip_from=date(2026, 6, 16),
         trip_to=date(2026, 6, 20),
-        lodging_check_in=date(2026, 6, 16),
-        lodging_nights=3,
+        stays=[(date(2026, 6, 16), 3)],
     )
 
     assert gaps == [date(2026, 6, 19)]
+
+
+def test_two_stays_cover_the_trip_between_them() -> None:
+    """A mailed folio plus a bill the employee forwards later. Both count."""
+    gaps = find_coverage_gaps(
+        trip_from=date(2026, 6, 16),
+        trip_to=date(2026, 6, 20),
+        stays=[(date(2026, 6, 16), 3), (date(2026, 6, 19), 1)],
+    )
+
+    assert gaps == []
 
 
 def test_a_fully_covered_trip_has_no_gaps() -> None:
     gaps = find_coverage_gaps(
         trip_from=date(2026, 6, 16),
         trip_to=date(2026, 6, 20),
-        lodging_check_in=date(2026, 6, 16),
-        lodging_nights=4,
+        stays=[(date(2026, 6, 16), 4)],
     )
 
     assert gaps == []
@@ -198,8 +207,7 @@ def test_no_lodging_at_all_flags_every_night() -> None:
     gaps = find_coverage_gaps(
         trip_from=date(2026, 6, 16),
         trip_to=date(2026, 6, 18),
-        lodging_check_in=None,
-        lodging_nights=None,
+        stays=[],
     )
 
     assert gaps == [date(2026, 6, 16), date(2026, 6, 17)]
@@ -209,8 +217,7 @@ def test_a_same_day_trip_needs_no_accommodation() -> None:
     gaps = find_coverage_gaps(
         trip_from=date(2026, 6, 16),
         trip_to=date(2026, 6, 16),
-        lodging_check_in=None,
-        lodging_nights=None,
+        stays=[],
     )
 
     assert gaps == []

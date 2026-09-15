@@ -389,6 +389,10 @@ class ExtractedLineItem(Base, ExternalIdMixin, TimestampMixin):
     tax_amount: Mapped[Decimal | None] = mapped_column(Money, nullable=True)
     currency: Mapped[str] = mapped_column(String(3), default="INR")
 
+    # Lodging only. The §3.1 tariff limit is per night, so the check needs a divisor, and a
+    # folio whose figures were typed in by hand has to carry it as well as one that was read.
+    nights: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     category_hint: Mapped[str | None] = mapped_column(String(60), nullable=True)
     payment_method: Mapped[str | None] = mapped_column(String(120), nullable=True)
     # Whose expense this is, per the evidence. A mismatch against the claimant is a rejection.

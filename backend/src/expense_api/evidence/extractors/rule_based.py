@@ -3,11 +3,17 @@
 This is the shipped, tested extraction path. It needs no credentials and behaves the same way
 every run.
 
-Its honest limitation, stated here because it belongs next to the code and not only in the
-note: these parsers are tuned to the sender formats in this pack. An unseen vendor will not
-parse. That is what the adapter seam is for - the answer is to swap the extractor, not to keep
-adding regexes. The reconciliation guard sits underneath either adapter and catches the case
-where a parser reads a bill partially and confidently.
+Two layers. The **per-sender parsers** decompose a bill the way the pack's own senders lay it
+out - the hotel folio into its five chargeable lines, the e-ticket into its two sectors -
+because policy treats those lines differently and a single total cannot be assessed against
+§3.1 at all. Underneath sits a **generic reader** for a vendor nobody wrote a parser for: one
+line for the whole bill, taken from a labelled total in the body or in OCR of the attachment.
+
+The fallback is deliberately narrow. It runs only when the specific parser found *nothing* -
+never when it found lines that failed reconciliation, because a single self-consistent total
+would "balance" and quietly replace exactly the discrepancy reconcile.py exists to surface. And
+it never invents a figure: no labelled total means needs-input, which is visible and blocks
+submission, rather than a plausible number nobody checked.
 """
 
 from __future__ import annotations
@@ -17,7 +23,7 @@ import re
 from datetime import date, datetime
 from decimal import Decimal
 
-from expense_api.db.models import DocKind
+from expense_api.db.models import DocKind, ExtractionStatus
 from expense_api.evidence.amounts import parse_amount
 from expense_api.evidence.extractors.base import (
     ExtractedItem,
@@ -25,7 +31,7 @@ from expense_api.evidence.extractors.base import (
     from_items,
     needs_input,
 )
-from expense_api.evidence.extractors.ocr import OcrUnavailableError, ocr_image
+from expense_api.evidence.extractors.ocr import read_attachment_text
 from expense_api.evidence.ingest import ParsedEmail
 
 logger = logging.getLogger(__name__)
@@ -61,7 +67,10 @@ _PASSENGER = re.compile(r"^\s*Passenger:\s*(?P<name>.+?)\s*$", re.I | re.M)
 _BOOKING_REF = re.compile(r"\b(?P<ref>[A-Z]{2}\d{6,})\b")
 
 _FOLIO_NO = re.compile(r"Folio no\s+(?P<ref>\S+)", re.I)
-_NIGHTS = re.compile(r"Nights\s+(?P<n>\d+)", re.I)
+# "Nights 3", "Nights: 3", "3 nights". The §3.1 lodging limit is per night, so this is the
+# divisor without which a lodging line cannot be assessed at all.
+_NIGHTS = re.compile(r"Nights?\s*:?\s*(?P<n>\d+)", re.I)
+_NIGHTS_TRAILING = re.compile(r"(?P<n>\d+)\s+nights?\b", re.I)
 _CHECK_IN = re.compile(r"Check-?in\s+(?P<when>\d{1,2}\s+[A-Za-z]{3}\s+\d{4})", re.I)
 _SETTLED_BY = re.compile(r"^\s*Settled by:\s*(?P<method>.+?)\s*$", re.I | re.M)
 _FOLIO_LINE = re.compile(r"^\s*(?P<label>[A-Za-z][A-Za-z \-]+?)\s{2,}(?P<amount>[\d.,]+)\s*$", re.M)
@@ -85,10 +94,32 @@ _OCR_CHARGE_LINE = re.compile(
 )
 _SERVICE_CHARGE = re.compile(r"^service charge", re.I)
 
-_BILL_NO = re.compile(r"Bill No\s+(?P<ref>\w+)", re.I)
+_BILL_NO = re.compile(r"Bill No\.?\s*:?\s*(?P<ref>\w[\w/-]*)", re.I)
+_INVOICE_NO = re.compile(
+    r"(?:Invoice|Receipt|Bill)\s*(?:no\.?|number|#)\s*:?\s*(?P<ref>\w[\w/-]*)", re.I
+)
 _COVERS = re.compile(r"Covers\s+(?P<n>\d+)", re.I)
 _PAID_BY_CARD = re.compile(r"Paid by\s+(?P<method>.+?)\s*$", re.I | re.M)
 _MASKED_CARD = re.compile(r"(\*{2,})\s*(\d[\d ]*\d)")
+
+# A labelled total, in any of the forms a real bill prints it. Separator is optional, so
+# "Total: Rs 480.00", "Amount Paid   INR 1,415.02" and "GRAND TOTAL 2255.00" all match, and
+# "Sub total" and "Total tax" deliberately do not - one is a component, the other is a tax.
+_LABELLED_TOTAL = re.compile(
+    r"^[ \t]*(?P<label>(?:grand|invoice|final|net|bill)[ \t]+)?"
+    r"(?:total(?:[ \t]+(?:amount|fare|payable|due|paid|charged))?"
+    r"|amount[ \t]+(?:paid|payable|charged|due)"
+    r"|net[ \t]+(?:payable|amount)|balance[ \t]+due|you[ \t]+paid|total)"
+    r"[ \t:.\-]*(?P<amount>(?:INR|Rs\.?|\u20b9)?[ \t]*\d[\d.,]*)[ \t]*$",
+    re.I | re.M,
+)
+# Labels that name the whole bill rather than a section of it, and so win over a larger
+# number found elsewhere in the text.
+_GRAND_LABEL = re.compile(r"grand|invoice|final|net|paid|payable|charged|due", re.I)
+
+# ISO and slash-separated dates, for vendors that do not print "18 Jun 2026".
+_ISO_DATE = re.compile(r"(?P<year>20\d{2})-(?P<mon>\d{1,2})-(?P<day>\d{1,2})")
+_SLASH_DATE = re.compile(r"(?P<day>\d{1,2})[/.](?P<mon>\d{1,2})[/.](?P<year>20\d{2})")
 
 _MONTHS = {
     m: i
@@ -106,15 +137,37 @@ class RuleBasedExtractor:
     def extract(self, parsed: ParsedEmail, kind: DocKind) -> ExtractionResult:
         match kind:
             case DocKind.CAB_RECEIPT | DocKind.THIRD_PARTY_FORWARD:
-                return _extract_ride(parsed)
+                specific = _extract_ride(parsed)
             case DocKind.FLIGHT_BOOKING:
-                return _extract_flights(parsed)
+                specific = _extract_flights(parsed)
             case DocKind.HOTEL_INVOICE:
-                return _extract_hotel_invoice(parsed)
+                specific = _extract_hotel_invoice(parsed)
             case DocKind.RESTAURANT_BILL:
-                return _extract_restaurant_bill(parsed)
+                specific = _extract_restaurant_bill(parsed)
             case _:
                 return needs_input(NAME, f"No parser for document kind {kind.value!r}")
+
+        if not _fallback_allowed(specific):
+            return specific
+
+        generic = _generic_bill(parsed, kind)
+        return generic if generic.status is ExtractionStatus.EXTRACTED else specific
+
+
+def _fallback_allowed(result: ExtractionResult) -> bool:
+    """Whether the generic reader may try after a per-sender parser.
+
+    Only when the parser produced no lines at all, which means it did not recognise the layout.
+    Once it has read even one line, its reconciliation verdict stands: a parser that read five
+    charges summing short of the stated subtotal has found a real discrepancy, and a whole-bill
+    total balancing against itself would bury exactly what reconcile.py exists to surface.
+
+    An empty read that "fails" reconciliation carries no such finding - nothing was compared
+    but zero - so it does not block the fallback.
+    """
+    if result.status is ExtractionStatus.EXTRACTED:
+        return False
+    return not result.items
 
 
 # ------------------------------------------------------------------------- rides
@@ -145,7 +198,9 @@ def _extract_ride(parsed: ParsedEmail) -> ExtractionResult:
     item = ExtractedItem(
         gross_amount=total,
         description=f"{pickup} to {drop}" if pickup and drop else (parsed.subject or "Cab"),
-        merchant="Uber",
+        # From the message, not hardcoded: dedup keys on merchant (§5.3), and labelling an Ola
+        # fare "Uber" both misreports it to Finance and breaks that key.
+        merchant=_vendor_name(parsed) or "Cab",
         txn_date=when.date() if when else None,
         txn_datetime=when,
         tax_amount=tax,
@@ -379,17 +434,193 @@ def _normalise_card(value: str | None) -> str | None:
     return _MASKED_CARD.sub(lambda m: m.group(1) + m.group(2).replace(" ", ""), value).strip()
 
 
+# ----------------------------------------------------------------- generic bills
+
+
+def _generic_bill(parsed: ParsedEmail, kind: DocKind) -> ExtractionResult:
+    """One line for a whole bill, for a vendor with no parser of its own.
+
+    The body is preferred over OCR wherever it carries the total, for the same reason the
+    hotel parser prefers it: machine-readable text beats a photograph of the same figures.
+
+    A bill decomposed by a per-sender parser is strictly better than this - policy assesses a
+    room charge, a laundry charge and a minibar charge differently, and cannot do that to a
+    single total. What this buys is that an unseen vendor's receipt arrives as a claim line
+    with a figure and a proof reference, instead of being set aside as unreadable.
+    """
+    ocr_text = _try_ocr(parsed)
+
+    for text, confidence in ((parsed.body_text, 0.7), (ocr_text or "", 0.6)):
+        if not text.strip():
+            continue
+        total = _labelled_total(text)
+        if total is None:
+            continue
+
+        subtotal = _first_amount(_SUBTOTAL, text)
+        taxes, service_charge = _charge_components(text)
+        when = _parse_when(text)
+        nights = _nights_in(text) if kind is DocKind.HOTEL_INVOICE else None
+
+        item = ExtractedItem(
+            gross_amount=total,
+            description=_generic_description(parsed, kind, text),
+            merchant=_vendor_name(parsed),
+            txn_date=when.date() if when else None,
+            txn_datetime=when,
+            # Only GST is tax; a service charge was paid but is not one, and rolling it in
+            # would misstate what §3.1 apportionment works from.
+            tax_amount=sum(taxes, Decimal("0.00")) or None,
+            payment_method=_normalise_card(_generic_payment(text)),
+            payer_name=_generic_payer(parsed, text),
+            bill_no=_group(_INVOICE_NO, text, "ref") or _group(_BILL_NO, text, "ref"),
+            # The §3.1 lodging limit is per night, so a hotel line without a divisor cannot be
+            # assessed at all.
+            nights=nights,
+            confidence=confidence,
+            raw_span=text[:400],
+        )
+
+        # Where the bill prints its own components, they are what gets checked against the
+        # total. Where it prints only a total there is nothing independent to compare, and
+        # that is recorded as unverifiable rather than reconciled against itself.
+        components: list[Decimal] | None = None
+        if subtotal is not None:
+            components = [subtotal, *taxes]
+            if service_charge is not None:
+                components.append(service_charge)
+
+        return from_items(
+            NAME,
+            [item],
+            stated_subtotal=total if components else None,
+            stated_total=total,
+            ocr_text=ocr_text,
+            reconcile_amounts=components,
+        )
+
+    return needs_input(
+        NAME,
+        "No labelled total found in this document, so its amount has to be entered by hand",
+        ocr_text=ocr_text,
+    )
+
+
+def _nights_in(text: str) -> int | None:
+    match = _NIGHTS.search(text) or _NIGHTS_TRAILING.search(text)
+    return int(match.group("n")) if match else None
+
+
+def _labelled_total(text: str) -> Decimal | None:
+    """The bill's own total, never the largest number in the text.
+
+    Where several totals are printed - a per-sector fare, a per-day charge - the one whose
+    label names the whole bill wins; failing that, the largest, which is what a grand total
+    is. An unlabelled number is never a total: guessing one is how a system pays a table
+    number.
+    """
+    candidates: list[tuple[bool, Decimal]] = []
+    for match in _LABELLED_TOTAL.finditer(text):
+        amount = parse_amount(match.group("amount"))
+        if amount is None:
+            continue
+        label = match.group(0)
+        candidates.append((bool(_GRAND_LABEL.search(label)), amount))
+
+    if not candidates:
+        return None
+
+    named = [amount for is_named, amount in candidates if is_named]
+    return named[0] if named else max(amount for _, amount in candidates)
+
+
+def _charge_components(text: str) -> tuple[list[Decimal], Decimal | None]:
+    taxes: list[Decimal] = []
+    service_charge: Decimal | None = None
+    for match in _OCR_CHARGE_LINE.finditer(text):
+        label = match.group("label").strip()
+        amount = parse_amount(match.group("amount"))
+        if amount is None:
+            continue
+        if _TAX_LABEL.match(label):
+            taxes.append(amount)
+        elif _SERVICE_CHARGE.match(label):
+            service_charge = amount
+    return taxes, service_charge
+
+
+def _generic_description(parsed: ParsedEmail, kind: DocKind, text: str) -> str:
+    """A description policy can classify, since `classify_head` reads exactly this string."""
+    match kind:
+        case DocKind.HOTEL_INVOICE:
+            return "Hotel stay"
+        case DocKind.RESTAURANT_BILL:
+            covers = _COVERS.search(text)
+            return f"Meal, {covers.group('n')} covers" if covers else "Restaurant bill"
+        case DocKind.FLIGHT_BOOKING:
+            return "Air travel"
+        case _:
+            pickup = _group(_PICKUP, text, "place")
+            drop = _group(_DROP, text, "place")
+            return f"{pickup} to {drop}" if pickup and drop else "Cab ride"
+
+
+def _generic_payment(text: str) -> str | None:
+    return (
+        _group(_PAYMENT, text, "method")
+        or _group(_SETTLED_BY, text, "method")
+        or _group(_PAID_BY_CARD, text, "method")
+    )
+
+
+def _generic_payer(parsed: ParsedEmail, text: str) -> str | None:
+    """Whose expense the document says this is - attribution compares it to the claimant.
+
+    Only what the document states. The sender is not a fallback: a receipt mailed by a vendor
+    would name the vendor as the payer, and attribution would reject the claimant's own bill.
+    """
+    return _group(_RIDER, text, "name") or _group(_PASSENGER, text, "name") or _guest_name(parsed)
+
+
+def _vendor_name(parsed: ParsedEmail) -> str | None:
+    """The merchant, from whatever the message actually tells us.
+
+    Dedup keys on merchant (§5.3), so this has to be stable for the same vendor across two
+    messages - the sender domain is, a display name is not always.
+    """
+    haystack = f"{parsed.sender_email or ''} {parsed.subject or ''} {parsed.body_text}".lower()
+    for brand in ("uber", "ola", "rapido", "meru", "indigo", "vistara", "spicejet"):
+        if brand in haystack:
+            return brand.title() if brand != "indigo" else "IndiGo"
+    if parsed.sender_name and "@" not in parsed.sender_name:
+        return parsed.sender_name
+    if parsed.sender_email:
+        return parsed.sender_email.split("@")[-1].split(".")[0].title()
+    return None
+
+
 # ------------------------------------------------------------------------ shared
 
 
 def _try_ocr(parsed: ParsedEmail) -> str | None:
-    if parsed.attachment_path is None:
+    """Text from every attachment: each image via OCR, each PDF via text extraction.
+
+    A mailed folio can arrive as two image pages; reading only the first drops half the
+    bill. Parts that cannot be read are skipped, and None means none of them yielded text.
+    """
+    if not parsed.attachment_paths:
         return None
-    try:
-        return ocr_image(parsed.attachment_path)
-    except (OcrUnavailableError, FileNotFoundError) as exc:
-        logger.warning("OCR unavailable for %s: %s", parsed.source_filename, exc)
-        return None
+    chunks: list[str] = []
+    for attachment in parsed.attachment_paths:
+        try:
+            text = read_attachment_text(attachment)
+        except FileNotFoundError as exc:
+            logger.warning("Attachment missing for %s: %s", parsed.source_filename, exc)
+            continue
+        if text and text.strip():
+            chunks.append(text.strip())
+    combined = "\n".join(chunks).strip()
+    return combined or None
 
 
 def _group(pattern: re.Pattern[str], text: str, name: str) -> str | None:
@@ -411,8 +642,18 @@ def _first_nonempty_line(text: str) -> str | None:
 
 def _parse_when(text: str) -> datetime | None:
     match = _RIDE_WHEN.search(text) or _DMY_DASHED.search(text)
-    if not match:
-        return None
+    if match is None:
+        # A vendor with no parser of its own may print the date numerically. Day-first for the
+        # slash form: these are Indian bills, and 03/04/2026 is 3 April, not 4 March.
+        numeric = _ISO_DATE.search(text) or _SLASH_DATE.search(text)
+        if numeric is None:
+            return None
+        try:
+            return datetime(
+                int(numeric.group("year")), int(numeric.group("mon")), int(numeric.group("day"))
+            )
+        except ValueError:
+            return None
 
     month = _MONTHS.get(match.group("mon").lower())
     if month is None:

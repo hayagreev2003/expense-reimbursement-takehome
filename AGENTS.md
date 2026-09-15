@@ -114,6 +114,32 @@ Claim state has two phases and the distinction matters:
   moment anything behind it moves. Uploads and withdrawals are refused (409) until a return
   puts the claim back in draft.
 
+A trip is applied for at `POST /trips`. It belongs to whoever applied, starts with no evidence -
+so its claim is an empty draft - and takes the next free `TRQ-<year>-NNNN`. Before that endpoint
+existed a trip could only come from `make seed`, which left the product unusable by the person it
+is for.
+
+## Correcting a bill nothing could read
+
+`needs_input` blocks submission on purpose: an unbalanced document must not become claim lines on
+a guess. The exit is `POST /trips/{trq}/documents/{id}/correction`, in `evidence/corrections.py`.
+Four things keep it from being a hole, and none of them is optional:
+
+- The typed lines enter the pipeline as ordinary extracted items, so drafting, attribution, dedup
+  and every §3/§4 rule still apply. A correction changes what the numbers *are*, never what
+  policy makes of them.
+- The rows live on the document with `extractor_name = "manual"`. The draft is recomputed on
+  every read, so the pipeline has to consult those rows *instead of* re-reading the file - and
+  `claims/schemas.py` carries a `manually_entered` list through to the approver's screen, because
+  a typed figure and a read one are not the same evidence.
+- A second correction replaces the first rather than adding to it; the `claim_event` is what
+  preserves the earlier attempt.
+- Only a document nothing could read is correctable (`CORRECTABLE` in that module). Overwriting a
+  balanced extraction by hand is not a correction, it is an unreviewed edit, and it returns 409.
+
+`extracted_line_item.nights` exists for this: §3.1 is a per-night limit, so a typed folio without
+it is measured against one night's tariff and most of it disallowed.
+
 ## Conventions
 
 **Backend**
@@ -164,6 +190,14 @@ cannot find it. Type layout props explicitly.
 `Content-Transfer-Encoding: base64` but the part body is the literal text
 `[ATTACHMENT: see receipts/<name> in this pack]`. A standard MIME parser yields nothing. The
 ingester resolves that placeholder against `pack/receipts/`.
+
+**Mail from outside the pack carries real MIME parts**, and nothing after ingest can read bytes -
+both extractors take a path. `parse_eml` writes those parts to its `extract_dir` as
+`<message stem>--<attachment name>`; a caller reading pack mail must pass a writable directory
+(`settings.extracted_dir`), since `pack/` is mounted `:ro`. Classification and extraction each
+have a generic tier underneath their pack-specific rules for the same reason - see
+`docs/agents/extraction.md`, and note the two constraints on the extraction fallback: it runs
+only when the specific parser read nothing, and it never infers an unlabelled figure.
 
 **OCR loses a line on the hotel folio.** Both receipt images have a fold drawn across them, and
 on `hotel_invoice_1188.png` the fold sits on a room-charge line — the label is destroyed and

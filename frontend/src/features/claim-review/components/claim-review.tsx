@@ -100,6 +100,24 @@ export function ClaimReview({ trqId, readOnly = false }: { trqId: string; readOn
         </Alert>
       )}
 
+      {claim.manually_entered.length > 0 && (
+        <Alert className="border-sky-200 bg-sky-50">
+          <AlertTitle className="text-sky-900">Figures entered by hand</AlertTitle>
+          <AlertDescription>
+            {/* An approver signing this claim is entitled to know which of its numbers came off
+                a bill and which came off a keyboard. */}
+            <ul className="mt-1 space-y-1 text-sky-900">
+              {claim.manually_entered.map(document => (
+                <li key={document.source_filename}>
+                  <span className="font-mono text-xs">{document.source_filename}</span> —{' '}
+                  {document.reason}
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {claim.coverage_gaps.length > 0 && (
         <Alert>
           <AlertTitle>Nothing accounts for {claim.coverage_gaps.join(', ')}</AlertTitle>

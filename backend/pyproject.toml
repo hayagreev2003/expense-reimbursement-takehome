@@ -21,6 +21,8 @@ dependencies = [
     # Wraps the tesseract binary installed in the backend image (see backend/Dockerfile).
     "pytesseract~=0.3.13",
     "pillow~=12.3.0",
+    # Text from uploaded/scanned PDF receipts. Pure python, no system dependency.
+    "pypdf~=6.0.0",
     "python-multipart~=0.0.32",
 ]
 
